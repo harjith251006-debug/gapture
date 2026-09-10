@@ -27,21 +27,27 @@ export function NotificationCard({
 }) {
   const n = notification;
   return (
-    <li className={n.isRead ? "" : "bg-blue-50/50 dark:bg-blue-950/20"}>
-      <button type="button" onClick={onToggle} className="flex w-full items-start gap-3 px-3 py-2.5 text-left">
+    <li className={n.isRead ? "" : "bg-brand/[0.04]"}>
+      <button type="button" onClick={onToggle} className="flex w-full items-start gap-3 px-3 py-3 text-left">
         <span
-          className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${n.isRead ? "bg-transparent" : "bg-blue-600"}`}
+          className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${n.isRead ? "bg-transparent" : "bg-brand"}`}
           aria-hidden
         />
         <span className="min-w-0 flex-1">
-          <span className="block break-words text-sm">{n.title}</span>
-          <span className="block text-xs text-slate-400">{new Date(n.createdAt).toLocaleString()}</span>
+          <span
+            className={`block break-words text-sm ${n.isRead ? "text-slate-700 dark:text-slate-300" : "font-semibold text-navy dark:text-slate-100"}`}
+          >
+            {n.title}
+          </span>
+          <span className="block text-xs text-[var(--text-muted)]">
+            {new Date(n.createdAt).toLocaleString()}
+          </span>
           {expanded && (
             <span className="mt-2 block whitespace-pre-wrap break-words text-sm text-slate-600 dark:text-slate-300">
               {n.description}
               <Link
                 href={`/regulations/${n.documentId}`}
-                className="mt-2 block text-blue-600 hover:underline"
+                className="mt-2 block font-medium text-brand hover:underline"
                 onClick={(e) => e.stopPropagation()}
               >
                 View document →

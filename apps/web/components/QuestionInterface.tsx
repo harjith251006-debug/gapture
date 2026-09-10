@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { VoiceButton } from "@/components/VoiceButton";
+import { AILabel } from "@/components/AILabel";
 
 interface QaItem {
   id: string;
@@ -112,7 +113,10 @@ export function QuestionInterface({ documentId }: { documentId: string }) {
 
   return (
     <section className="space-y-3">
-      <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-400">Ask about this document</h2>
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="section-title">Contextual Q&amp;A</h2>
+        <AILabel />
+      </div>
 
       <form
         onSubmit={(e) => {
@@ -126,14 +130,10 @@ export function QuestionInterface({ documentId }: { documentId: string }) {
           value={question}
           onChange={(e) => setQuestion(e.target.value)}
           placeholder="e.g. What action does this require, and by when?"
-          className="flex-1 rounded-md border border-slate-300 bg-transparent px-3 py-1.5 text-sm dark:border-slate-700"
+          className="field flex-1"
           aria-label="Your question about this document"
         />
-        <button
-          type="submit"
-          disabled={busy || question.trim().length < 3}
-          className="rounded-md border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:hover:bg-slate-900"
-        >
+        <button type="submit" disabled={busy || question.trim().length < 3} className="btn-primary">
           {busy ? "Asking…" : "Ask"}
         </button>
       </form>
@@ -146,36 +146,36 @@ export function QuestionInterface({ documentId }: { documentId: string }) {
           }}
           disabled={busy}
         />
-        {speaking && <span className="text-xs text-slate-400">Speaking…</span>}
+        {speaking && <span className="text-xs text-ai">✦ Gapture AI is responding…</span>}
       </div>
 
-      <p className="text-xs text-slate-400">
+      <p className="text-xs text-[var(--text-muted)]">
         Answers are grounded only in this document and your organization&apos;s policies.
       </p>
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && <p className="text-sm text-danger">{error}</p>}
 
       {history.length > 0 && (
         <ul className="space-y-3">
           {history.map((qa) => (
             <li
               key={qa.id}
-              className={`rounded-md border p-3 ${
+              className={`rounded-[var(--radius-card)] border p-3.5 ${
                 qa.answered === false
-                  ? "border-amber-300 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30"
-                  : "border-slate-200 dark:border-slate-800"
+                  ? "border-warning/40 bg-warning/[0.06]"
+                  : "border-[var(--border)] bg-[var(--surface)]"
               }`}
             >
-              <p className="break-words text-sm font-medium">{qa.question}</p>
+              <p className="break-words text-sm font-semibold text-navy dark:text-slate-100">{qa.question}</p>
               <p className="mt-1 whitespace-pre-wrap break-words text-sm text-slate-700 dark:text-slate-300">
                 {qa.answer}
               </p>
               {qa.answered === false && (
-                <p className="mt-1.5 text-xs font-medium text-amber-700 dark:text-amber-400">
+                <p className="mt-1.5 text-xs font-semibold text-warning">
                   Not enough context to answer confidently
                 </p>
               )}
               {qa.answered && qa.sources && (
-                <p className="mt-1.5 text-xs text-slate-400">
+                <p className="mt-1.5 text-xs text-[var(--text-muted)]">
                   Based on {qa.sources.regulation} regulation excerpt
                   {qa.sources.regulation === 1 ? "" : "s"}
                   {qa.sources.policy > 0

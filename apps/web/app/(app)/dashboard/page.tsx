@@ -42,38 +42,46 @@ export default async function DashboardPage() {
   });
 
   return (
-    <div className="max-w-2xl space-y-8">
+    <div className="space-y-8">
       <div className="space-y-1">
-        <h1 className="text-lg font-semibold">Dashboard</h1>
-        <p className="text-sm text-slate-500">
-          {unread ? `${unread} unread notification${unread === 1 ? "" : "s"}.` : "You're all caught up."}
+        <h1 className="page-title">Welcome back 👋</h1>
+        <p className="text-sm text-[var(--text-muted)]">
+          {unread
+            ? `You have ${unread} unread notification${unread === 1 ? "" : "s"}.`
+            : "Here's your compliance overview. You're all caught up."}
         </p>
       </div>
 
       <section className="space-y-3">
         <div className="flex items-center justify-between">
-          <h2 className="text-sm font-medium">Recent notifications</h2>
-          <Link href="/notifications" className="text-xs text-blue-600 hover:underline">
+          <h2 className="section-title">Recent notifications</h2>
+          <Link href="/notifications" className="text-xs font-medium text-brand hover:underline">
             View all
           </Link>
         </div>
         {!notifs || notifs.length === 0 ? (
-          <p className="text-sm text-slate-500">No notifications yet.</p>
+          <div className="card p-6 text-center text-sm text-[var(--text-muted)]">
+            No notifications yet. New RBI &amp; SEBI regulatory changes appear here once analysed.
+          </div>
         ) : (
-          <ul className="divide-y divide-slate-200 rounded-md border border-slate-200 dark:divide-slate-800 dark:border-slate-800">
+          <ul className="card divide-y divide-[var(--border)] overflow-hidden">
             {notifs.map((n) => (
               <li key={n.id}>
                 <Link
                   href={`/regulations/${n.document_id}`}
-                  className="flex items-start gap-3 px-3 py-2.5 hover:bg-slate-50 dark:hover:bg-slate-900"
+                  className="flex items-start gap-3 px-3 py-3 hover:bg-brand/[0.03]"
                 >
                   <span
-                    className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${n.is_read ? "bg-transparent" : "bg-blue-600"}`}
+                    className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${n.is_read ? "bg-transparent" : "bg-brand"}`}
                     aria-hidden
                   />
                   <span className="min-w-0 flex-1">
-                    <span className="block text-sm">{n.title}</span>
-                    <span className="block text-xs text-slate-400">
+                    <span
+                      className={`block break-words text-sm ${n.is_read ? "text-slate-700 dark:text-slate-300" : "font-semibold text-navy dark:text-slate-100"}`}
+                    >
+                      {n.title}
+                    </span>
+                    <span className="block text-xs text-[var(--text-muted)]">
                       {new Date(n.created_at).toLocaleString()}
                     </span>
                   </span>
@@ -86,13 +94,13 @@ export default async function DashboardPage() {
 
       <section className="space-y-3">
         <div className="flex items-center justify-between">
-          <h2 className="text-sm font-medium">Recent regulatory documents</h2>
-          <Link href="/regulations" className="text-xs text-blue-600 hover:underline">
+          <h2 className="section-title">Recent regulatory documents</h2>
+          <Link href="/regulations" className="text-xs font-medium text-brand hover:underline">
             View all
           </Link>
         </div>
         {documents.length === 0 ? (
-          <p className="text-sm text-slate-500">Nothing detected yet.</p>
+          <div className="card p-6 text-center text-sm text-[var(--text-muted)]">Nothing detected yet.</div>
         ) : (
           <ul className="space-y-2">
             {documents.map((doc) => (

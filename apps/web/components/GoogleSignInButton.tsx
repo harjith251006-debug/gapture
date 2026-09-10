@@ -26,15 +26,10 @@ export function GoogleSignInButton() {
 
   return (
     <div>
-      <button
-        type="button"
-        onClick={handleClick}
-        disabled={loading}
-        className="w-full flex items-center justify-center gap-2 rounded-md border border-slate-300 dark:border-slate-700 px-4 py-2 text-sm font-medium hover:bg-slate-50 dark:hover:bg-slate-900 disabled:opacity-50 disabled:cursor-not-allowed"
-      >
+      <button type="button" onClick={handleClick} disabled={loading} className="btn-secondary w-full">
         {loading ? "Redirecting…" : "Continue with Google"}
       </button>
-      {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
+      {error && <p className="mt-2 text-sm text-danger">{error}</p>}
     </div>
   );
 }

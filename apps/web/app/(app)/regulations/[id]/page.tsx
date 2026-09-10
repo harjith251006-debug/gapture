@@ -59,36 +59,40 @@ export default async function RegulationDetailPage({ params }: { params: Promise
     : null;
 
   return (
-    <div className="max-w-2xl space-y-6">
+    <div className="max-w-3xl space-y-6">
       <div>
-        <Link href="/regulations" className="text-sm text-blue-600 hover:underline">
-          ← All regulations
+        <Link href="/regulations" className="text-sm font-medium text-brand hover:underline">
+          ← Regulatory Intelligence
         </Link>
       </div>
 
-      <header className="space-y-2">
+      <header className="card space-y-2 p-4">
         <div className="flex flex-wrap items-center gap-2">
           <SourceBadge code={row.source_code} />
           <StatusBadge status={row.status} />
         </div>
-        <h1 className="text-lg font-semibold leading-snug break-words">{row.title}</h1>
-        {row.source_name && <p className="text-sm text-slate-500">{row.source_name}</p>}
+        <h1 className="break-words text-lg font-bold leading-snug text-navy dark:text-slate-100 sm:text-xl">
+          {row.title}
+        </h1>
+        <p className="text-xs text-[var(--text-muted)]">
+          {row.source_name ?? "Regulatory source"} · Official regulatory document
+        </p>
       </header>
 
       {analysis ? (
-        <>
+        <div className="space-y-4">
           <SummaryView analysis={analysis} />
           {analysis.detailed && <DetailedBrief detailed={analysis.detailed} />}
-        </>
+        </div>
       ) : (
-        <div className="rounded-md border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300">
+        <div className="card bg-canvas p-4 text-sm text-slate-600 dark:text-slate-300">
           {row.status === "FAILED"
             ? "Processing this document failed. The team has been notified."
-            : `This document is still being processed (${statusLabel(row.status).toLowerCase()}). The analysis against your organization's policies will appear here once it's ready.`}
+            : `This document is still being processed (${statusLabel(row.status).toLowerCase()}). The AI analysis against your organization's policies will appear here once it's ready.`}
         </div>
       )}
 
-      <hr className="border-slate-200 dark:border-slate-800" />
+      <hr className="border-[var(--border)]" />
 
       <QuestionInterface documentId={row.document_id} />
     </div>

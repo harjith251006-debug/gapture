@@ -80,7 +80,7 @@ export function MobileNav() {
 
   return (
     <nav
-      className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-4 border-t border-slate-200 bg-white/95 backdrop-blur sm:hidden dark:border-slate-800 dark:bg-slate-950/95"
+      className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-4 border-t border-[var(--border)] bg-[var(--surface)]/95 backdrop-blur sm:hidden"
       style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
     >
       {TABS.map(({ href, label, Icon, badge }) => {
@@ -90,14 +90,14 @@ export function MobileNav() {
             key={href}
             href={href}
             aria-current={activeTab ? "page" : undefined}
-            className={`flex flex-col items-center justify-center gap-0.5 py-2 text-[11px] ${
-              activeTab ? "text-blue-600 dark:text-blue-400" : "text-slate-500 dark:text-slate-400"
+            className={`flex flex-col items-center justify-center gap-0.5 py-2 text-[11px] font-medium ${
+              activeTab ? "text-brand" : "text-[var(--text-muted)]"
             }`}
           >
             <span className="relative">
               <Icon className="h-5 w-5" />
               {badge && unread > 0 && (
-                <span className="absolute -right-2 -top-1 min-w-4 rounded-full bg-blue-600 px-1 text-[10px] font-medium leading-4 text-white">
+                <span className="absolute -right-2 -top-1 min-w-4 rounded-full bg-brand px-1 text-[10px] font-semibold leading-4 text-white">
                   {unread > 9 ? "9+" : unread}
                 </span>
               )}

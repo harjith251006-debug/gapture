@@ -76,7 +76,7 @@ export function VoiceButton({
   }
 
   const label =
-    state === "recording" ? "Stop & ask" : state === "transcribing" ? "Transcribing…" : "🎙 Ask by voice";
+    state === "recording" ? "◼ Stop & ask" : state === "transcribing" ? "Understanding…" : "🎙 Ask by voice";
 
   return (
     <div className="flex flex-col gap-1">
@@ -84,16 +84,16 @@ export function VoiceButton({
         type="button"
         onClick={state === "recording" ? stop : start}
         disabled={disabled || state === "transcribing"}
-        className={`rounded-md border px-3 py-1.5 text-sm disabled:opacity-50 ${
+        className={
           state === "recording"
-            ? "border-red-400 bg-red-50 text-red-700 dark:border-red-700 dark:bg-red-950/40 dark:text-red-300"
-            : "border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-900"
-        }`}
+            ? "btn border border-danger/40 bg-danger/10 text-danger hover:bg-danger/15"
+            : "btn-ai"
+        }
         aria-pressed={state === "recording"}
       >
         {label}
       </button>
-      {error && <span className="text-xs text-red-600">{error}</span>}
+      {error && <span className="text-xs text-danger">{error}</span>}
     </div>
   );
 }

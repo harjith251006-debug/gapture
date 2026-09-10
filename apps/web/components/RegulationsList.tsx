@@ -81,7 +81,7 @@ export function RegulationsList() {
         <select
           value={source}
           onChange={(e) => applyFilter({ source: e.target.value, status })}
-          className="rounded-md border border-slate-300 bg-transparent px-2 py-1 text-sm dark:border-slate-700"
+          className="field !w-auto !py-1.5"
         >
           {SOURCES.map((s) => (
             <option key={s.value} value={s.value}>
@@ -92,7 +92,7 @@ export function RegulationsList() {
         <select
           value={status}
           onChange={(e) => applyFilter({ source, status: e.target.value })}
-          className="rounded-md border border-slate-300 bg-transparent px-2 py-1 text-sm dark:border-slate-700"
+          className="field !w-auto !py-1.5"
         >
           {STATUSES.map((s) => (
             <option key={s.value} value={s.value}>
@@ -103,11 +103,13 @@ export function RegulationsList() {
       </div>
 
       {error ? (
-        <p className="text-sm text-red-600">Couldn&apos;t load regulations. Refresh to try again.</p>
+        <p className="text-sm text-danger">Couldn&apos;t load regulations. Refresh to try again.</p>
       ) : loading && items.length === 0 ? (
-        <p className="text-sm text-slate-500">Loading…</p>
+        <p className="text-sm text-[var(--text-muted)]">Loading…</p>
       ) : items.length === 0 ? (
-        <p className="text-sm text-slate-500">No regulatory documents match this filter.</p>
+        <div className="card p-8 text-center text-sm text-[var(--text-muted)]">
+          No regulatory documents match this filter.
+        </div>
       ) : (
         <>
           <ul className="space-y-2">
@@ -118,12 +120,7 @@ export function RegulationsList() {
             ))}
           </ul>
           {nextCursor && (
-            <button
-              type="button"
-              onClick={loadMore}
-              disabled={loading}
-              className="rounded-md border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:hover:bg-slate-900"
-            >
+            <button type="button" onClick={loadMore} disabled={loading} className="btn-secondary !py-1.5">
               {loading ? "Loading…" : "Load more"}
             </button>
           )}

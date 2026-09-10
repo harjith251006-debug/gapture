@@ -21,25 +21,27 @@ export default async function PoliciesPage() {
   return (
     <div className="max-w-2xl space-y-6">
       <div className="space-y-1">
-        <h1 className="text-lg font-semibold">Compliance policies</h1>
-        <p className="text-sm text-slate-500">
-          Upload your organization&apos;s compliance policies. Each is cleaned, chunked, and
-          embedded so new regulatory changes can be compared against them.
+        <h1 className="page-title">Compliance policies</h1>
+        <p className="text-sm text-[var(--text-muted)]">
+          Upload your organization&apos;s compliance policies. Each is cleaned, chunked, and embedded
+          so new regulatory changes can be compared against them.
         </p>
       </div>
 
       <PolicyUpload />
 
       <div className="space-y-2">
-        <h2 className="text-sm font-medium">Uploaded ({policies?.length ?? 0})</h2>
+        <h2 className="section-title">Uploaded ({policies?.length ?? 0})</h2>
         {!policies || policies.length === 0 ? (
-          <p className="text-sm text-slate-500">Nothing uploaded yet.</p>
+          <div className="card p-6 text-center text-sm text-[var(--text-muted)]">Nothing uploaded yet.</div>
         ) : (
-          <ul className="divide-y divide-slate-200 dark:divide-slate-800 rounded-md border border-slate-200 dark:border-slate-800">
+          <ul className="card divide-y divide-[var(--border)] overflow-hidden">
             {policies.map((p) => (
-              <li key={p.id} className="flex items-start justify-between gap-3 px-3 py-2.5 text-sm">
-                <span className="min-w-0 flex-1 break-words">{p.title}</span>
-                <span className="shrink-0 text-xs text-slate-500">
+              <li key={p.id} className="flex items-start justify-between gap-3 px-3 py-3 text-sm">
+                <span className="min-w-0 flex-1 break-words text-navy dark:text-slate-200">{p.title}</span>
+                <span
+                  className={`shrink-0 text-xs font-medium ${p.status === "COMPLETED" ? "text-success" : p.status === "FAILED" ? "text-danger" : "text-[var(--text-muted)]"}`}
+                >
                   {STATUS_LABEL[p.status] ?? p.status}
                 </span>
               </li>

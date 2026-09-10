@@ -13,18 +13,18 @@ export function RegulatoryCard({ doc }: { doc: RegulatoryCardData }) {
   return (
     <Link
       href={`/regulations/${doc.id}`}
-      className="block rounded-md border border-slate-200 p-3 transition-colors hover:border-slate-300 hover:bg-slate-50 dark:border-slate-800 dark:hover:border-slate-700 dark:hover:bg-slate-900"
+      className="card block p-3.5 transition-colors hover:border-brand/40 hover:bg-brand/[0.03]"
     >
       <div className="mb-1.5 flex flex-wrap items-center gap-2">
         <SourceBadge code={doc.source?.code ?? null} />
         <StatusBadge status={doc.status} />
         {doc.publishedAt && (
-          <span className="text-xs text-slate-400">
+          <span className="text-xs text-[var(--text-muted)]">
             {new Date(doc.publishedAt).toLocaleDateString()}
           </span>
         )}
       </div>
-      <p className="text-sm leading-snug break-words">{doc.title}</p>
+      <p className="break-words text-sm font-medium leading-snug text-navy dark:text-slate-100">{doc.title}</p>
     </Link>
   );
 }

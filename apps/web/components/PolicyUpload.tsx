@@ -49,9 +49,9 @@ export function PolicyUpload() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-3 rounded-md border border-slate-200 dark:border-slate-800 p-4">
+    <form onSubmit={handleSubmit} className="card space-y-3 p-4">
       <div className="space-y-1">
-        <label htmlFor="policy-title" className="block text-sm font-medium">
+        <label htmlFor="policy-title" className="block text-sm font-medium text-navy dark:text-slate-200">
           Title (optional)
         </label>
         <input
@@ -60,11 +60,11 @@ export function PolicyUpload() {
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           placeholder="e.g. AML & KYC Policy 2026"
-          className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-transparent px-3 py-1.5 text-sm"
+          className="field"
         />
       </div>
       <div className="space-y-1">
-        <label htmlFor="policy-file" className="block text-sm font-medium">
+        <label htmlFor="policy-file" className="block text-sm font-medium text-navy dark:text-slate-200">
           File (PDF, text, Markdown, PNG, JPEG — PDFs/images under 1 MB)
         </label>
         <input
@@ -72,18 +72,14 @@ export function PolicyUpload() {
           type="file"
           accept=".pdf,.txt,.md,.png,.jpg,.jpeg,application/pdf,text/plain,text/markdown,image/png,image/jpeg"
           onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-          className="block w-full text-sm"
+          className="block w-full text-sm text-[var(--text-muted)] file:mr-3 file:rounded-[var(--radius-btn)] file:border-0 file:bg-brand/10 file:px-3 file:py-1.5 file:text-sm file:font-semibold file:text-brand"
         />
       </div>
-      <button
-        type="submit"
-        disabled={!file || busy}
-        className="rounded-md border border-slate-300 dark:border-slate-700 px-3 py-1.5 text-sm hover:bg-slate-50 dark:hover:bg-slate-900 disabled:opacity-50"
-      >
+      <button type="submit" disabled={!file || busy} className="btn-primary">
         {busy ? "Uploading…" : "Upload policy"}
       </button>
       {message && (
-        <p className={`text-sm ${message.kind === "ok" ? "text-emerald-600" : "text-red-600"}`}>{message.text}</p>
+        <p className={`text-sm ${message.kind === "ok" ? "text-success" : "text-danger"}`}>{message.text}</p>
       )}
     </form>
   );
