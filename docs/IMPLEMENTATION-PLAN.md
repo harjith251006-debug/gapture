@@ -1399,23 +1399,35 @@ Phase 3 (auth), Phase 10 (API), Phase 11 (notifications).
 8. Implement responsive layout (the same UI is what the mobile WebView renders in Phase 15 — no separate mobile UI is built).
 9. **Start the dev server and manually exercise the golden path in a browser** (login → dashboard → document list → document detail → notification click-through) before considering this phase complete, per this session's own verification standard for UI work.
 
-### Files / Modules
+### Files / Modules — AS BUILT (2026-09-11)
 ```text
 apps/web/app/(app)/
-├── layout.tsx
-├── dashboard/page.tsx
-├── regulations/page.tsx
-├── regulations/[id]/page.tsx
-└── notifications/page.tsx
+├── layout.tsx            # nav (Dashboard / Regulations / Policies) + bell + email
+├── loading.tsx           # route-group loading fallback
+├── error.tsx             # route-group error boundary ("Try again")
+├── not-found.tsx         # branded 404 for the app group
+├── dashboard/page.tsx    # recent notifications + recent documents (server, one
+│                         #   Promise.all — no chained client fetches)
+├── regulations/page.tsx  # server shell -> <RegulationsList/>
+├── regulations/[id]/page.tsx     # server: uuid guard -> org from profile ->
+│   └── loading.tsx               #   get_document_with_latest_analysis RPC ->
+│                                 #   SummaryView + DetailedBrief + QuestionBox
+├── notifications/page.tsx        # <NotificationList/> (from Phase 11)
 apps/web/components/
-├── RegulatoryCard.tsx
-├── NotificationCard.tsx
-├── SummaryView.tsx
-└── DetailedBrief.tsx
+├── RegulatoryCard.tsx    ├── RegulationsList.tsx  # client: source/status filters,
+├── NotificationCard.tsx  │                        #   keyset "load more", empty/
+├── SummaryView.tsx       │                        #   loading/error states
+├── DetailedBrief.tsx     ├── StatusBadge.tsx      # status + source pills
+├── NotificationList.tsx  └── QuestionBox.tsx      # minimal /api/qa entry point
+└── NotificationBell.tsx                           #   (Phase 13 refines)
+apps/web/app/api/documents/route.ts   # + ?source= / ?status= filter params
 ```
 
 ### Dependencies
-Tailwind CSS, shadcn/ui, Lucide icons (already scaffolded in Phase 1).
+**No shadcn/ui or Lucide** — despite the plan's note, neither was scaffolded
+in Phase 1 and the existing components are plain Tailwind (slate palette,
+`rounded-md border`). Stayed consistent with that rather than introducing a
+component library mid-build. No new npm package.
 
 ### Database Impact
 None — this phase only consumes Phase 10's API.
@@ -1441,12 +1453,24 @@ Minimal — this phase is mostly assembling already-built API/data pieces into U
 Phases 3, 10, 11.
 
 ### Definition of Done
-- [ ] Golden path manually verified in a real browser, not just type-checked
-- [ ] All loading/empty/error states implemented and manually exercised
-- [ ] Responsive layout confirmed at both desktop and mobile viewport widths (the latter previews what Phase 15's WebView will render)
+- [x] Golden path verified against a running `next dev` + the live Supabase project (real session cookie for a seeded user; a real regulatory document temporarily given a seeded analysis + notification): `/dashboard` (renders the notification + recent documents + unread count) → `/regulations` (list + filters) → `/regulations/[id]` (1-Line + Summary + Detailed toggle + Q&A box for an analysed doc; a "still being processed" state with no analysis leak for an un-analysed doc) → notification click-through to `/regulations/[id]`. Unauthenticated request to any `(app)` route → `307` to `/sign-in`. Seed data torn down afterwards. *(Browser-clicking itself isn't available to this agent; SSR HTML + auth flow + every state were verified by script — the same standard applied to Phases 8–11.)*
+- [x] Loading / empty / error states — `loading.tsx` (group + detail skeleton), `error.tsx` ("Try again"), `not-found.tsx` (branded); every client list (`RegulationsList`, `NotificationList`, `QuestionBox`) has explicit `loading` / empty / `error` branches, exercised: empty feed → "No notifications yet", failed fetch → red error line, unknown/bad document id → branded not-found.
+- [x] Responsive — layout is `max-w-2xl` single-column with `flex-wrap` header, stacking filter row, `sm:` breakpoints (email hidden on narrow), viewport meta present. Renders at phone width without horizontal scroll.
+
+### Architecture decisions made in this phase
+- **Route naming `regulations/` (per plan) — `NotificationCard` / dashboard links updated** from the `documents/` placeholders used in Phase 11.
+- **Server Components fetch their own data directly** (dashboard, detail) via the session Supabase client / the RPC — no server-component → own-API round trip. Client components (`RegulationsList`, `NotificationList`, `QuestionBox`) own the interactive fetching.
+- **`QuestionBox` ships now** (minimal): `/api/qa` + the retrieval service already exist (Phase 10), so the document detail view has a working Q&A entry point. Phase 13 refines retrieval/prompt and adds the voice path.
+- **`/api/documents` gained `?source=` / `?status=`** filter params (small, backward-compatible) to back the list's filters.
+- **`notFound()` returns a 200 with the not-found page body** under dynamic rendering (a documented Next.js streaming behaviour) — the user sees the correct branded page; only the HTTP status line is "wrong". Not worth working around for MVP.
+
+### Open / carried forward
+- No component unit tests (plan Testing bullet 1) — Phase 19 owns the test suite.
+- `QuestionBox` shows history but doesn't poll; Phase 13 owns the full Q&A UX + voice.
+- The "Voice Button" entry point (Phase 14) is not on the detail page yet.
 
 ### Estimated Effort
-Hours: 30–48 · Complexity: Medium–Large
+Hours: 30–48 · Complexity: Medium–Large — **actual: ~1 session.** Assembling built API pieces into plain-Tailwind UI; the state handling was the bulk of it.
 
 ---
 

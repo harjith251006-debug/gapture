@@ -1,3 +1,4 @@
+import { z } from "zod";
 import {
   applyKeyset,
   decodeCursor,
@@ -11,6 +12,24 @@ import {
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+const DOCUMENT_STATUSES = [
+  "DETECTED",
+  "RETRIEVED",
+  "OCR_PROCESSING",
+  "SECURED",
+  "STORED",
+  "CLEANING",
+  "INDEXING",
+  "ANALYZING",
+  "COMPLETED",
+  "FAILED",
+] as const;
+
+const filterSchema = paginationQuerySchema.extend({
+  source: z.string().trim().min(1).max(20).optional(),
+  status: z.enum(DOCUMENT_STATUSES).optional(),
+});
 
 interface DocumentRow {
   id: string;
@@ -29,12 +48,15 @@ interface DocumentRow {
  */
 export const GET = route("api/documents", async (req) => {
   const { supabase } = await requireSession();
-  const { cursor, limit } = parseQuery(paginationQuerySchema, req.url);
+  const { cursor, limit, source, status } = parseQuery(filterSchema, req.url);
   const decoded = decodeCursor(cursor);
 
-  const base = supabase
+  let base = supabase
     .from("regulatory_documents")
     .select("id, title, status, published_at, created_at, regulatory_sources!inner(code, name)");
+
+  if (status) base = base.eq("status", status);
+  if (source) base = base.eq("regulatory_sources.code", source.toUpperCase());
 
   const { data, error } = await applyKeyset(base, decoded, limit);
   if (error) throw new Error(`documents query failed: ${error.message}`);
