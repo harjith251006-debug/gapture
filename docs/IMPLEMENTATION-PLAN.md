@@ -284,7 +284,7 @@ None (this is the first phase). Requires human action: creating accounts on Supa
 - [x] Embedding model decided: **`text-embedding-3-small`** (task E17) — verified against OpenAI's current API docs, not guessed. **Dimension: 1024** (updated in Phase 7 — the provisioned Pinecone `gaptureai` index is 1024-dim; `text-embedding-3-small` emits 1024 natively via the `dimensions` param, so no model change. Original plan said 1536.)
 - [x] Git workflow decided: trunk-based, short feature branches, PR + CI gate before merge (task J27)
 - [x] Commit convention decided: Conventional Commits (task J28)
-- [ ] OpenAI chat/completions model and transcription model — **deliberately left unresolved**: current flagship-model naming couldn't be reliably verified via web search (conflicting/unreliable results from third-party pricing-tracker sites), so no specific model string is asserted here. Confirm directly in the OpenAI dashboard when the API key is created (task F19), then record the exact model chosen.
+- [x] OpenAI chat/completions model — **`gpt-5-mini`** (resolved Phase 9, 2026-09-11, against the live `/v1/models` list). Reasoning model: `max_completion_tokens`, no `temperature`; supports `response_format: json_schema` strict. Config: `OPENAI_ANALYSIS_MODEL`. Transcription model (Phase 14) still to confirm at that phase — the list shows `gpt-4o-transcribe` / `gpt-transcribe` available.
 - [ ] Supabase project created — **blocked: Supabase MCP connector not authorized for this session; requires either connecting it via claude.ai connector settings, or manual creation via supabase.com**
 - [x] Pinecone account/index created — index `gaptureai`, 1024-dim, cosine, host in `PINECONE_INDEX_HOST`
 - [x] OpenAI API key obtained — live, embeddings verified
@@ -1086,18 +1086,42 @@ Phase 7 (regulatory document embedded/indexed), Phase 8 (at least one organizati
 7. Hand off to Phase 11 (Notification creation) as a **separate** transaction/step — a notification-creation failure must never roll back or block the already-completed analysis (HLSA §21, DB Schema §31).
 8. Run this per organization that has policies indexed — one regulatory document can and will produce different `nlp_analyses` rows for different organizations, by design (DB Schema §7).
 
-### Files / Modules
+### Files / Modules — AS BUILT (2026-09-11)
 ```text
 packages/shared/src/services/llm/
-├── nlp-analysis.ts
-└── prompts/analysis-prompt.ts
+├── types.ts                    # AnalysisInput/Output, LlmError, Zod schema
+├── prompts/analysis-prompt.ts  # SYSTEM prompt (all guardrails encoded here) +
+│                               #   the strict json_schema for response_format
+└── nlp-analysis.ts             # OpenAIAnalysisProvider (raw fetch, gpt-5-mini,
+                                #   response_format json_schema strict) +
+                                #   NlpAnalysisService (retry/backoff + Zod gate:
+                                #   invalid JSON is rejected & retried, never
+                                #   returned for persistence)
 worker/src/analysis/
-├── retrieve-context.ts
-└── run-analysis.ts
+├── retrieve-context.ts         # getRegulatoryText (reassemble from chunks,
+│                               #   cap to prompt budget), getOrganizationsWith
+│                               #   Policies, retrievePolicyContext (embed reg
+│                               #   text -> Pinecone `policy` ns, filter
+│                               #   {organization_id} -> resolve ids -> Postgres)
+└── run-analysis.ts             # runAnalysisForDocument(): per-org loop, INSERT
+                                #   nlp_analyses, advance -> COMPLETED. Never throws.
+worker/src/intelligence/clients.ts  # + getAnalysisService(config) (cached)
+worker/src/monitoring/loop.ts       # + processAnalyzableDocuments() sweep,
+                                    #   ANALYSIS_BATCH_SIZE (default 3)
+worker/src/config.ts                # + OPENAI_ANALYSIS_* and ANALYSIS_* vars
 ```
 
 ### Dependencies
-`openai` SDK (chat/completions with structured output), Zod (response validation).
+`zod` added to `@gapture/shared` (the one new package). **No `openai` SDK** —
+`/v1/chat/completions` is called with raw `fetch` and `response_format:
+{ type: "json_schema", strict: true }`, consistent with every other provider
+in this project.
+
+**Model:** `gpt-5-mini` (`OPENAI_ANALYSIS_MODEL`) — verified against the live
+API on 2026-09-11 (`gpt-4o`-era names are gone; the gpt-5 family is current).
+It is a reasoning model: `max_completion_tokens` (not `max_tokens`), no
+`temperature`. Chosen as the cheapest current model that does strict
+structured output well.
 
 ### Database Impact
 `INSERT` into `nlp_analyses` (`one_line_output`, `detailed_output`, `summary_output`); `regulatory_documents.status → COMPLETED`, both in one transaction. No re-analysis overwrites a prior row — multiple rows per `(document_id, organization_id)` are allowed and resolved via `ORDER BY created_at DESC LIMIT 1` / the `regulatory_document_latest_analysis` view (Phase 2, task 11).
@@ -1127,14 +1151,26 @@ None directly in this phase — `nlp_analyses` becomes readable via Phase 10's R
 Phase 7 (regulatory document indexed), Phase 8 (organization policy context indexed).
 
 ### Definition of Done
-- [ ] A real regulatory document + a real policy set produce grounded, structurally valid 1-Line/Detailed/Summary output
-- [ ] Multi-tenant correctness verified (two orgs, two distinct analyses)
-- [ ] Insufficient-evidence path verified (no fabrication when context is empty/irrelevant)
-- [ ] Analysis + status-update transaction atomicity verified
-- [ ] `docs/ai/AI-ARCHITECTURE.md` written, documenting the prompt/guardrail design
+- [x] A real regulatory document + a real policy set produce grounded, structurally valid 1-Line/Detailed/Summary output — verified against RBI-13694 (UNSC 1988 Taliban sanctions-list amendment) + a real ACME "Sanctions Screening & AML Policy": `evidence_sufficient: true`, and the outputs cite only facts present in the context (the actual circular number `DOR. AML. REC. 218/…`, the listed individual, the policy's own 24-hour re-screening clause). Zod-validated before insert.
+- [x] Multi-tenant correctness verified — the same document analysed for two orgs produced two distinct `nlp_analyses` rows, each scoped to its `organization_id`, each grounded only in that org's policy context.
+- [x] Insufficient-evidence path verified — for the org whose only policy was an office/dress-code policy, `evidence_sufficient: false` and all three outputs state plainly that no relevant policy context was found and no comparison was made. No fabricated clauses.
+- [x] Analysis + status-update atomicity verified — with a pre-existing `nlp_analyses` row for one org (simulating a crash mid-loop), the re-run did **not** overwrite that row, still analysed the other org, and only then advanced the document to `COMPLETED`. The document was never `COMPLETED` while an org still lacked a row.
+- [ ] `docs/ai/AI-ARCHITECTURE.md` — not yet written (carried forward).
+
+### Architecture decisions made in this phase
+- **No DB transaction; the invariant is held structurally.** supabase-js has no multi-statement transaction and `nlp_analyses` needs no client RLS INSERT policy (worker uses the service role), so `run-analysis` INSERTs every org's row first and only calls `advance_document_status('COMPLETED')` after all succeed. A re-run skips orgs that already have a row (`SELECT organization_id FROM nlp_analyses WHERE document_id = …`), so a crash mid-loop self-heals with no duplicate rows and no premature COMPLETED. No new migration.
+- **Guardrails live in the system prompt + a strict `json_schema` + a Zod gate**, three layers: the prompt forbids introducing any clause/date/threshold not in the context and mandates `evidence_sufficient: false` on empty/unrelated context; `response_format` constrains the shape at the API; `analysisOutputSchema.safeParse` rejects anything malformed/empty and the service retries.
+- **Context query = the regulatory text itself.** `retrievePolicyContext` embeds the document's reassembled cleaned text (capped at `ANALYSIS_MAX_REG_CHARS`) and queries the `policy` namespace filtered by `organization_id` — never another org's vectors. Matches are resolved back to `policy_chunks.content` in Postgres (Pinecone holds only ids + `{organization_id, policy_id, chunk_index}`).
+- **Zero orgs with policies ⇒ held, not completed.** A document with no organization to compare against stays `ANALYZING` and is retried once a policy is indexed. There is no "empty" analysis.
+
+### Open / carried forward
+- `docs/ai/AI-ARCHITECTURE.md` still to be written (prompt/guardrail design rationale).
+- **New policies after a document is `COMPLETED` do not trigger re-analysis** — the sweep only picks `ANALYZING`. A new org onboarding after a document completed will not get a back-dated analysis for it. Acceptable for MVP; revisit if the product needs it.
+- Cost: one `gpt-5-mini` call per (document × org). `ANALYSIS_BATCH_SIZE` (3/cycle) bounds it; Phase 19/21 owns real cost/rate management.
+- Phase 11 (Notifications) consumes the `COMPLETED` status + the latest `nlp_analyses` row — as a **separate** step, never blocking or rolling back the analysis.
 
 ### Estimated Effort
-Hours: 20–32 · Complexity: Large (prompt design + guardrail validation is genuinely non-trivial work, not boilerplate)
+Hours: 20–32 · Complexity: Large — **actual: ~1 session.** The prompt/guardrail design was the real work; the plumbing reused Phases 7–8.
 
 ---
 

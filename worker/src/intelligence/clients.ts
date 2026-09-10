@@ -1,10 +1,16 @@
-import { EmbeddingService, OpenAIEmbeddingProvider, PineconeClient } from "@gapture/shared";
+import {
+  EmbeddingService,
+  NlpAnalysisService,
+  OpenAIAnalysisProvider,
+  OpenAIEmbeddingProvider,
+  PineconeClient,
+} from "@gapture/shared";
 import type { Config } from "../config.js";
 
 /**
  * Cached embedding + Pinecone clients, shared by the regulatory
- * (embed-and-index) and policy (policy-pipeline) sweeps so both hit the same
- * model / index configuration.
+ * (embed-and-index), policy (policy-pipeline), and analysis sweeps so all
+ * hit the same model / index configuration.
  */
 
 export interface EmbeddingClients {
@@ -13,6 +19,7 @@ export interface EmbeddingClients {
 }
 
 const cache = new WeakMap<Config, EmbeddingClients>();
+const analysisCache = new WeakMap<Config, NlpAnalysisService>();
 
 export function getEmbeddingClients(config: Config): EmbeddingClients {
   const cached = cache.get(config);
@@ -34,4 +41,20 @@ export function getEmbeddingClients(config: Config): EmbeddingClients {
   };
   cache.set(config, clients);
   return clients;
+}
+
+/** Cached NLP analysis service (Phase 9). */
+export function getAnalysisService(config: Config): NlpAnalysisService {
+  const cached = analysisCache.get(config);
+  if (cached) return cached;
+  const service = new NlpAnalysisService(
+    new OpenAIAnalysisProvider({
+      apiKey: config.OPENAI_API_KEY,
+      model: config.OPENAI_ANALYSIS_MODEL,
+      maxCompletionTokens: config.OPENAI_ANALYSIS_MAX_TOKENS,
+      timeoutMs: config.OPENAI_ANALYSIS_TIMEOUT_MS,
+    }),
+  );
+  analysisCache.set(config, service);
+  return service;
 }

@@ -12,6 +12,7 @@ import { processDocument } from "../ingestion/process-document.js";
 import { cleanAndChunkDocument } from "../intelligence/process-cleaning.js";
 import { embedAndIndexDocument } from "../intelligence/embed-and-index.js";
 import { processPolicyDocument } from "../intelligence/policy-pipeline.js";
+import { runAnalysisForDocument } from "../analysis/run-analysis.js";
 
 /** Non-terminal statuses whose documents still need ingestion (Phase 5) work. */
 const PENDING_STATUSES = ["DETECTED", "RETRIEVED", "OCR_PROCESSING", "SECURED"];
@@ -21,6 +22,8 @@ const CLEANABLE_STATUSES = ["STORED", "CLEANING"];
 const INDEXABLE_STATUSES = ["INDEXING"];
 /** Compliance-policy statuses that still need processing (Phase 8). */
 const PROCESSABLE_POLICY_STATUSES = ["UPLOADED", "CLEANING", "INDEXING"];
+/** Documents ready for NLP analysis (Phase 9). */
+const ANALYZABLE_STATUSES = ["ANALYZING"];
 
 const ADAPTERS: Record<string, SourceAdapter> = {
   RBI: rbiAdapter,
@@ -149,6 +152,7 @@ export async function runCycle(
   await processCleanableDocuments(supabase, log, config);
   await processIndexableDocuments(supabase, log, config);
   await processPendingPolicies(supabase, log, config);
+  await processAnalyzableDocuments(supabase, log, config);
 
   log.info("poll cycle finished", { durationMs: Date.now() - startedAt });
 }
@@ -309,6 +313,45 @@ export async function processPendingPolicies(
     else if (result.outcome === "held") held++;
   }
   log.info("policy sweep finished", { attempted: pending.length, completed, held });
+}
+
+/**
+ * Analysis sweep (Phase 9): take up to ANALYSIS_BATCH_SIZE ANALYZING
+ * documents and run the grounded regulatory-vs-policy comparison for every
+ * organization that has indexed policies, then advance each to COMPLETED.
+ * Small batch — one LLM call per (document x organization). A per-document
+ * failure holds that document at ANALYZING and does not stop the sweep.
+ */
+export async function processAnalyzableDocuments(
+  supabase: WorkerSupabaseClient,
+  log: Logger,
+  config: Config,
+): Promise<void> {
+  const { data: pending, error } = await supabase
+    .from("regulatory_documents")
+    .select("id")
+    .in("status", ANALYZABLE_STATUSES)
+    .order("detected_at", { ascending: true })
+    .limit(config.ANALYSIS_BATCH_SIZE);
+
+  if (error) {
+    log.error("failed to load documents for analysis", { error: error.message });
+    return;
+  }
+  if (!pending || pending.length === 0) {
+    log.debug("no documents pending analysis");
+    return;
+  }
+
+  log.info("analysis sweep starting", { count: pending.length });
+  let analyzed = 0;
+  let held = 0;
+  for (const row of pending) {
+    const result = await runAnalysisForDocument(supabase, log, config, row.id);
+    if (result.outcome === "analyzed") analyzed++;
+    else if (result.outcome === "held") held++;
+  }
+  log.info("analysis sweep finished", { attempted: pending.length, analyzed, held });
 }
 
 /**

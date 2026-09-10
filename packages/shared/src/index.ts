@@ -13,3 +13,6 @@ export * from "./services/embeddings/embedding-service";
 export * from "./services/embeddings/providers/openai-embedding-provider";
 export * from "./services/pinecone/types";
 export * from "./services/pinecone/pinecone-client";
+export * from "./services/llm/types";
+export * from "./services/llm/prompts/analysis-prompt";
+export * from "./services/llm/nlp-analysis";

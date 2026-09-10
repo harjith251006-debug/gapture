@@ -13,6 +13,10 @@ const schema = z.object({
   /** Must equal the Pinecone index dimension. gaptureai index = 1024. */
   OPENAI_EMBEDDING_DIMENSIONS: z.coerce.number().int().positive().default(1024),
   OPENAI_REQUEST_TIMEOUT_MS: z.coerce.number().int().positive().default(30_000),
+  /** Chat model for regulatory-vs-policy analysis (Phase 9). gpt-5 family. */
+  OPENAI_ANALYSIS_MODEL: z.string().default("gpt-5-mini"),
+  OPENAI_ANALYSIS_MAX_TOKENS: z.coerce.number().int().positive().default(4000),
+  OPENAI_ANALYSIS_TIMEOUT_MS: z.coerce.number().int().positive().default(60_000),
   PINECONE_API_KEY: z.string().min(1),
   PINECONE_INDEX_HOST: z.string().url(),
   PINECONE_REQUEST_TIMEOUT_MS: z.coerce.number().int().positive().default(30_000),
@@ -30,6 +34,12 @@ const schema = z.object({
   EMBEDDING_BATCH_SIZE: z.coerce.number().int().positive().default(5),
   /** How many uploaded/in-flight compliance policies to process per cycle. */
   POLICY_BATCH_SIZE: z.coerce.number().int().positive().default(3),
+  /** How many ANALYZING documents to run NLP analysis on per cycle (one LLM call per org). */
+  ANALYSIS_BATCH_SIZE: z.coerce.number().int().positive().default(3),
+  /** Top-k policy chunks retrieved from Pinecone as grounding context per org. */
+  ANALYSIS_CONTEXT_TOPK: z.coerce.number().int().positive().default(8),
+  /** Max characters of regulatory text put into the analysis prompt. */
+  ANALYSIS_MAX_REG_CHARS: z.coerce.number().int().positive().default(12_000),
   NODE_ENV: z.string().default("development"),
 });
 

@@ -11,10 +11,11 @@
     "test": "echo \"(no tests yet)\""
   },
   "dependencies": {
-    "@supabase/supabase-js": "latest"
+    "@supabase/supabase-js": "latest",
+    "zod": "^4.6.1"
   },
   "devDependencies": {
-    "typescript": "^5",
-    "@types/node": "latest"
+    "@types/node": "latest",
+    "typescript": "^5"
   }
 }
