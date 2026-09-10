@@ -4,7 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { SourceBadge, StatusBadge, statusLabel } from "@/components/StatusBadge";
 import { SummaryView, type AnalysisData } from "@/components/SummaryView";
 import { DetailedBrief } from "@/components/DetailedBrief";
-import { QuestionBox } from "@/components/QuestionBox";
+import { QuestionInterface } from "@/components/QuestionInterface";
 
 export const dynamic = "force-dynamic";
 
@@ -90,7 +90,7 @@ export default async function RegulationDetailPage({ params }: { params: Promise
 
       <hr className="border-slate-200 dark:border-slate-800" />
 
-      <QuestionBox documentId={row.document_id} />
+      <QuestionInterface documentId={row.document_id} />
     </div>
   );
 }

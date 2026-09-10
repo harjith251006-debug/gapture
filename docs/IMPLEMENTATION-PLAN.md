@@ -1155,7 +1155,7 @@ Phase 7 (regulatory document indexed), Phase 8 (organization policy context inde
 - [x] Multi-tenant correctness verified — the same document analysed for two orgs produced two distinct `nlp_analyses` rows, each scoped to its `organization_id`, each grounded only in that org's policy context.
 - [x] Insufficient-evidence path verified — for the org whose only policy was an office/dress-code policy, `evidence_sufficient: false` and all three outputs state plainly that no relevant policy context was found and no comparison was made. No fabricated clauses.
 - [x] Analysis + status-update atomicity verified — with a pre-existing `nlp_analyses` row for one org (simulating a crash mid-loop), the re-run did **not** overwrite that row, still analysed the other org, and only then advanced the document to `COMPLETED`. The document was never `COMPLETED` while an org still lacked a row.
-- [ ] `docs/ai/AI-ARCHITECTURE.md` — not yet written (carried forward).
+- [x] `docs/ai/AI-ARCHITECTURE.md` — written in Phase 13 (covers both phases).
 
 ### Architecture decisions made in this phase
 - **No DB transaction; the invariant is held structurally.** supabase-js has no multi-statement transaction and `nlp_analyses` needs no client RLS INSERT policy (worker uses the service role), so `run-analysis` INSERTs every org's row first and only calls `advance_document_status('COMPLETED')` after all succeed. A re-run skips orgs that already have a row (`SELECT organization_id FROM nlp_analyses WHERE document_id = …`), so a crash mid-loop self-heals with no duplicate rows and no premature COMPLETED. No new migration.
@@ -1164,7 +1164,7 @@ Phase 7 (regulatory document indexed), Phase 8 (organization policy context inde
 - **Zero orgs with policies ⇒ held, not completed.** A document with no organization to compare against stays `ANALYZING` and is retried once a policy is indexed. There is no "empty" analysis.
 
 ### Open / carried forward
-- `docs/ai/AI-ARCHITECTURE.md` still to be written (prompt/guardrail design rationale).
+- `docs/ai/AI-ARCHITECTURE.md` — written in Phase 13.
 - **New policies after a document is `COMPLETED` do not trigger re-analysis** — the sweep only picks `ANALYZING`. A new org onboarding after a document completed will not get a back-dated analysis for it. Acceptable for MVP; revisit if the product needs it.
 - Cost: one `gpt-5-mini` call per (document × org). `ANALYSIS_BATCH_SIZE` (3/cycle) bounds it; Phase 19/21 owns real cost/rate management.
 - Phase 11 (Notifications) consumes the `COMPLETED` status + the latest `nlp_analyses` row — as a **separate** step, never blocking or rolling back the analysis.
@@ -1490,14 +1490,27 @@ Phase 7 (regulatory chunks indexed), Phase 8 (policy chunks indexed), Phase 10 (
 5. Wire the frontend (Phase 12's document detail view) to `POST /api/qa` and render the answer plus a link back to the question history (`GET /api/qa/history`).
 6. Explicitly scope every answer to the document currently being viewed — no unrelated, general-purpose chat functionality is introduced (HLSA §12 Architecture Decision, matching PRD FR-23's "with respect to the relevant context").
 
-### Files / Modules
+### Files / Modules — AS BUILT (2026-09-11)
 ```text
-packages/shared/src/services/llm/contextual-qa.ts
-apps/web/components/QuestionInterface.tsx
+packages/shared/src/services/llm/contextual-qa.ts   # REFINED over the Phase 10
+    # minimal version: per-question retrieval from both namespaces, a cosine
+    # score floor (QA_MIN_SCORE, default 0.15) that drops noise, per-section
+    # char budgets, score-desc ordering, and a hard rule — if nothing clears
+    # the floor the model is NOT called at all, an explicit "can't answer" is
+    # returned. Stronger system prompt: regulation excerpts are authoritative,
+    # off-topic policy excerpts must be ignored, thin context -> answered=false.
+apps/web/components/QuestionInterface.tsx   # replaces QuestionBox: distinct
+    # amber "Not enough context" state for answered=false, "Based on N
+    # regulation / M policy excerpts" provenance line, grounding disclaimer.
+apps/web/app/api/qa/route.ts     # + `sources: {regulation, policy}` in the response
+apps/web/lib/qa.ts               # + QA_TOP_K / QA_MIN_SCORE env passthrough
+apps/web/app/(app)/regulations/[id]/page.tsx   # uses QuestionInterface
 ```
 
 ### Dependencies
-Already-installed `openai` and `@pinecone-database/pinecone` SDKs (Phases 7, 9) — no new package.
+None — raw `fetch` for OpenAI, `@gapture/shared`'s `EmbeddingService` /
+`PineconeClient` for retrieval (no `openai` / `@pinecone-database` SDK, same
+as Phases 7–10).
 
 ### Database Impact
 `INSERT` into `contextual_interactions` only. No schema change.
@@ -1523,12 +1536,24 @@ Same LLM-hallucination risk class as Phase 9 (BRD RISK-003) — mitigated identi
 Phases 7, 8, 10.
 
 ### Definition of Done
-- [ ] A real question about a real document returns a grounded, correctly-scoped answer
-- [ ] Empty-context case returns an explicit "unable to answer," never a fabrication
-- [ ] Question/answer history persists and displays correctly
+- [x] A real question about a real document returns a grounded, correctly-scoped answer — verified against RBI-13694 (Taliban sanctions-list amendment) + a real ACME sanctions policy: `answered:true`, `sources: {regulation:4, policy:1}`, the answer cites `[R2]` and only facts in the retrieved excerpts (s.51A UAPA, Chapter IX RBI KYC Directions).
+- [x] Empty/irrelevant-context → explicit "unable to answer," never a fabrication — an off-topic question ("capital of France?") on the same document returned `answered:false` with "couldn't find anything relevant enough" (the score floor dropped every match, so the model was **not called at all**); the word "Paris" never appears. A question on a still-`DETECTED` document returned `answered:false`, "no regulatory provisions in the context".
+- [x] Scoping — asked RBI-13694 "which UN list does this amend, the 1267/1989 ISIL list or the 1988 Taliban list?": answer correctly identified **1988 Taliban**, cited that document's own title, and did **not** answer with RBI-13695's ISIL/1267-1989 content (structural `document_id` filter + grounded prompt). `GET /api/qa/history` for the two documents returned completely disjoint rows.
+- [x] Question/answer history persists and displays correctly — 3 asked → 3 `contextual_interactions` rows, first answer stored **verbatim**, newest-first order; `QuestionInterface` renders the history, the amber "Not enough context" state for `answered:false`, and a "Based on N regulation / M policy excerpts" provenance line.
+- [x] `docs/ai/AI-ARCHITECTURE.md` written (covers Phase 9 + Phase 13 — models, retrieval, the three-layer guardrail, failure handling, explicit non-goals).
+
+### Architecture decisions made in this phase
+- **Score floor + no-call short-circuit.** Matches below `QA_MIN_SCORE` (cosine 0.15) are dropped; if nothing survives in either namespace the model is never invoked — the explicit "can't answer" is returned directly. This is what makes the "no fabrication" guarantee structural rather than prompt-dependent.
+- **Regulation excerpts are authoritative, policy excerpts are advisory.** The prompt tells the model to answer from the document's own text and to *ignore* policy excerpts that are off-topic (the org-wide policy filter means a policy chunk is almost always retrieved even for unrelated questions).
+- **`sources: {regulation, policy}` in the response** so the UI can show provenance ("Based on 4 regulation excerpts…") — a lightweight trust signal without exposing the chunk text.
+- **History has no `answered` column** (`contextual_interactions` is question+answer only, DB Schema §21) — the amber "not enough context" badge shows only on answers asked in the current session.
+
+### Open / carried forward
+- Voice path is Phase 14 (`QuestionInterface` is text-only).
+- `QA_MIN_SCORE` (0.15) was picked from observed `text-embedding-3-small@1024` score distributions, not tuned against a labelled set — revisit if users report good questions being refused.
 
 ### Estimated Effort
-Hours: 14–22 · Complexity: Medium
+Hours: 14–22 · Complexity: Medium — **actual: ~1 session.** Most plumbing existed from Phase 10; this was retrieval hardening + prompt + the frontend state.
 
 ---
 

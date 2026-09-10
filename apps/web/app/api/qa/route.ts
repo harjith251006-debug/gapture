@@ -70,6 +70,10 @@ export const POST = route("api/qa", async (req) => {
       question,
       answer: result.answer,
       answered: result.answered,
+      sources: {
+        regulation: result.regulatoryChunksUsed,
+        policy: result.policyChunksUsed,
+      },
       createdAt: saved.created_at,
     },
     undefined,
