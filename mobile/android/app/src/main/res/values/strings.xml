@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Gapture</string>
+
+    <string name="error_title">Can’t reach Gapture</string>
+    <string name="error_offline_message">You appear to be offline, or the app couldn’t be loaded. Check your connection and try again.</string>
+    <string name="error_ssl_message">The connection to Gapture isn’t secure and was blocked.</string>
+    <string name="retry">Retry</string>
+
+    <string name="config_needed_title">Not configured</string>
+    <string name="config_needed_message">This build has no deployment URL. Set gapture.appUrl in local.properties and rebuild. See mobile/README.md.</string>
+</resources>

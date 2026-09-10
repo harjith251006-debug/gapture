@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Nothing app-local is worth backing up; the session cookie re-establishes
+     itself on next launch or a fresh login. -->
+<full-backup-content>
+    <exclude domain="webview" />
+</full-backup-content>

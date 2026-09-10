@@ -1654,8 +1654,28 @@ Phase 12 (responsive web app fully functional).
 5. Verify external links (e.g., a signed Storage URL, if ever surfaced) open correctly rather than becoming trapped inside the WebView.
 6. Handle WebView-specific error states (no connectivity, page load failure) distinctly from the web app's own error states, since PRD §12 explicitly notes failures here are Web Application failures, not a separate native failure mode to build product logic around.
 
-### Files / Modules
-A new, separate mobile-shell project/repository is reasonable here (outside this monorepo's `apps/`, since it's a thin wrapper, not a Next.js/worker package) — exact location is an Architecture Decision for this phase, not fixed in advance.
+### Files / Modules — AS BUILT (2026-09-11)
+```text
+mobile/
+├── README.md                 # strategy, wrapper-choice rationale, build/run,
+│                             #   the deferred-verification note, the OAuth gap
+└── android/                  # bare Android WebView shell (Kotlin, 1 Activity)
+    ├── settings.gradle.kts, build.gradle.kts, gradle.properties
+    ├── gradlew, gradlew.bat, gradle/wrapper/gradle-wrapper.properties
+    └── app/
+        ├── build.gradle.kts  # namespace ai.gapture.mobile, minSdk 26,
+        │                     #   APP_URL from gapture.appUrl (local.properties)
+        └── src/main/
+            ├── AndroidManifest.xml   # INTERNET, RECORD_AUDIO; 1 exported Activity
+            ├── java/ai/gapture/mobile/MainActivity.kt   # the whole app
+            └── res/  # layout (WebView + native error/config screen), theme,
+                      #   network_security_config (HTTPS-only, dev loopback
+                      #   exception), adaptive launcher icon
+```
+Kept in this repo under `mobile/` (excluded from the pnpm workspace) rather
+than a separate repo — it is a one-file wrapper for a solo project; a
+separate repo would be overhead. iOS (`mobile/ios/`, `WKWebView` +
+`WKUIDelegate`) follows the same pattern — not built.
 
 ### Dependencies
 Whatever the chosen WebView-wrapper technology requires (e.g., a minimal Capacitor/Cordova-style shell, or a native-per-platform WebView activity/view controller) — deferred to this phase's own task 1, not pre-selected here since no source document mandates one.
@@ -1683,12 +1703,25 @@ WebView-specific platform quirks (cookie handling, media permissions) are the ma
 Phase 12 (and implicitly Phase 14, for voice-in-WebView testing).
 
 ### Definition of Done
-- [ ] Full golden path verified inside the actual WebView shell on at least one real device/emulator per target platform
-- [ ] Voice interaction confirmed functional inside the WebView specifically
-- [ ] No separate native regulatory-processing logic was introduced (explicit non-goal confirmed)
+- [~] Full golden path inside the actual WebView shell on a real device/emulator — **BLOCKED: not verifiable in this environment** (no Android SDK / Android Studio / device / emulator, and no deployed URL yet). The shell code implements every task 3–6 concern (see below); the web app's WebView-relevant behaviour was verified against `next dev`: `SameSite=Lax` session cookie carried across requests (Phases 10–14), responsive at phone width + viewport meta (Phase 12), `getUserMedia`/`MediaRecorder` capture guarded and `<input type=file>` upload present (Phases 8, 14), no `window.open` / `target=_blank` / service worker / `localStorage` reliance anywhere in the UI. **Remaining: build the APK and run it on a device against a deployment.**
+- [~] Voice interaction inside the WebView — same block. `MainActivity` grants `RESOURCE_AUDIO_CAPTURE` via `WebChromeClient.onPermissionRequest` gated on the OS `RECORD_AUDIO` runtime permission, and `setMediaPlaybackRequiresUserGesture(false)` for TTS playback — untested on a device.
+- [x] No separate native regulatory-processing logic — confirmed. The shell is one `Activity` + a `WebView` + a native error/config screen. No data layer, no OCR/NLP/notification code, no JS bridge, no debug bridge in release.
+
+### Architecture decisions made in this phase
+- **Bare per-platform native WebView, not Capacitor/Cordova/RN** (task 1). The wrapper does exactly five things (load URL, persist cookie, bridge mic permission, route external links, offline screen); a native `WebView` does all of them in ~200 lines of readable Kotlin with zero JS build tooling or plugin layer. Revisit only if a second native consumer appears.
+- **Android first and only for MVP** — largest platform share in the BRD's market. iOS is the same pattern with `WKWebView`.
+- **In-repo under `mobile/`** (workspace-excluded), not a separate repo — one file, solo project.
+- **HTTPS-only** (`network_security_config` `cleartextTrafficPermitted=false`, `usesCleartextTraffic=false`); a dev-only `10.0.2.2`/`localhost` cleartext exception is present but the `Secure` session cookie still needs an HTTPS tunnel for real testing.
+- **Google OAuth in a WebView is a known gap** — Google blocks embedded-WebView OAuth; the correct fix is a PKCE + deep-link (`ai.gapture.mobile://auth/callback`) flow the shell intercepts. Not built (needs device testing). Email/password works unchanged. Documented in `mobile/README.md`.
+
+### Open / carried forward
+- **On-device verification of the whole golden path + the mic-permission flow** — the actual DoD, blocked on tooling/device/deployment. Do this after Phase 16/deployment on a machine with Android Studio.
+- Google OAuth deep-link flow for mobile.
+- `mobile/ios/` shell.
+- `gradle-wrapper.jar` is gitignored (binary; Android Studio regenerates it on first sync).
 
 ### Estimated Effort
-Hours: 12–20 · Complexity: Small–Medium
+Hours: 12–20 · Complexity: Small–Medium — **scaffold ~1 session; on-device verification still owed and needs hardware this environment lacks.**
 
 ---
 
