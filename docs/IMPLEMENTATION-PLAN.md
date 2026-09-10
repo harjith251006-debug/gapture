@@ -1310,15 +1310,30 @@ Phase 9 (completed analyses exist), Phase 10 (`/api/notifications/*` routes).
 6. Wire the frontend notification bell/list (Phase 12) to `GET /api/notifications` and `/api/notifications/unread-count`.
 7. Implement mark-as-read on notification click, navigating to the document's regulatory view (Phase 12), which is where the **Detailed** output (not duplicated into the notification row, per DB Schema §20) is actually retrieved.
 
-### Files / Modules
+### Files / Modules — AS BUILT (2026-09-11)
 ```text
-worker/src/analysis/create-notification.ts
-apps/web/components/NotificationBell.tsx
-apps/web/components/NotificationList.tsx
+worker/src/analysis/create-notification.ts   # createNotificationsForDocument():
+                                             #   latest analysis per org (view) ->
+                                             #   org members (profiles) minus those
+                                             #   already notified -> ONE multi-row
+                                             #   INSERT. title = one_line_output
+                                             #   (capped 500), description =
+                                             #   summary_output, captured on the row.
+worker/src/monitoring/loop.ts        # + processPendingNotifications() sweep over
+                                     #   the most recently COMPLETED docs,
+                                     #   NOTIFICATION_BATCH_SIZE (default 10)
+worker/src/config.ts                 # + NOTIFICATION_BATCH_SIZE
+apps/web/components/NotificationBell.tsx   # header: unread badge, 60s poll
+apps/web/components/NotificationList.tsx   # feed + optimistic mark-read + expand
+apps/web/app/(app)/notifications/page.tsx  # the /notifications page
+apps/web/app/(app)/layout.tsx, proxy.ts    # nav link + protected prefix
 ```
 
 ### Dependencies
-None new — this phase is entirely built on Phase 2's schema and Phase 10's API.
+None new — built on Phase 2's schema and Phase 10's API. No migration
+(notification creation is check-then-insert; there is no
+`(user_id, document_id)` unique constraint and none is added — a re-analysed
+document could legitimately warrant a fresh notification later).
 
 ### Database Impact
 `INSERT` into `notifications` (batched per analysis, multi-recipient); `UPDATE` on click (`is_read`, `read_at`). No new tables/columns.
@@ -1344,13 +1359,24 @@ Uses `idx_notifications_user_time` and `idx_notifications_unread` (Phase 2) — 
 Phase 9 (analysis complete), Phase 10 (API routes), Phase 2 (schema/RLS).
 
 ### Definition of Done
-- [ ] Notification created automatically and correctly (title/description) immediately after analysis completion
-- [ ] Multi-recipient fan-out verified
-- [ ] Read/unread lifecycle works end-to-end from the (stub) frontend
-- [ ] Notification-creation failure isolation verified
+- [x] Notification created automatically and correctly — verified against a live COMPLETED document with a real analysis: `title == nlp_analyses.one_line_output`, `description == summary_output`, `nlp_analysis_id` linked, `organization_id` filled by `trg_notifications_set_org`. Created the cycle after the analysis completes (`processPendingNotifications` runs right after the analysis sweep).
+- [x] Multi-recipient fan-out verified — an org with 2 members produced exactly 2 rows from one `.insert([...])`; adding a 3rd member and re-running produced exactly 1 more (only the new member), still one batched insert.
+- [x] Read/unread lifecycle — `PATCH /api/notifications/[id]/read` sets `is_read`+`read_at`, `unread-count` drops (Phase 10 test); the DB `CHECK` rejects `read_at` while `is_read=false` (`23514`); `NotificationList.tsx` never sends that combination (it always PATCHes `{isRead:true}` with `read_at` server-set).
+- [x] Notification-creation failure isolation — deleted every notification for a COMPLETED document, ran the sweep: `nlp_analyses` rows and the document's `status` were byte-for-byte unchanged; the sweep recreated all notifications. The sweep only ever reads analyses and writes `notifications`.
+
+### Architecture decisions made in this phase
+- **Sweep, not an inline call.** Notification creation is its own `processPendingNotifications` pass over the most recently `COMPLETED` documents — fully decoupled from Phase 9, so a failure here can structurally never affect an analysis (HLSA §21 satisfied by construction, not by a try/catch). Idempotent check-then-insert on `document_id`, so once everyone is notified the sweep is a cheap no-op.
+- **Fan-out = every current member of the analysis's org** (plan task 3 Architecture Decision). Because it checks the live `profiles` list each run, a member who joins later is picked up on the next sweep — verified.
+- **`title`/`description` captured on the row** (`one_line_output` capped at 500 chars / `summary_output` verbatim) — never a live join to `nlp_analyses` for display (DB Schema §4.1 / §20). The full **Detailed** output is only fetched on the document detail view (Phase 12).
+- **No `(user_id, document_id)` unique constraint / migration** — a document re-analysed later could legitimately warrant a new notification; dedup is by explicit query, not a hard constraint.
+- **Minimal frontend now** (`NotificationBell` unread badge + 60s poll, `NotificationList` feed with optimistic mark-read + expand, `/notifications` page) — the polished bell/dropdown is Phase 12.
+
+### Open / carried forward
+- The sweep re-scans the N most-recent `COMPLETED` docs every cycle with no "fully notified" marker — fine at MVP scale (`NOTIFICATION_BATCH_SIZE` 10), revisit with a marker column if the completed-doc count grows large.
+- `NotificationList`'s "View document →" links to `/documents/[id]`, which Phase 12 builds.
 
 ### Estimated Effort
-Hours: 8–14 · Complexity: Small
+Hours: 8–14 · Complexity: Small — **actual: well under a session.** One worker file + one sweep + three small components.
 
 ---
 

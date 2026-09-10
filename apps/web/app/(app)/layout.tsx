@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { SignOutButton } from "@/components/SignOutButton";
+import { NotificationBell } from "@/components/NotificationBell";
 
 /**
  * Belt-and-suspenders check: middleware.ts already redirects unauthenticated
@@ -34,6 +35,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           </nav>
         </div>
         <div className="flex items-center gap-4 text-sm">
+          <NotificationBell />
           <span className="text-slate-500">{user.email}</span>
           <SignOutButton />
         </div>

@@ -40,6 +40,8 @@ const schema = z.object({
   ANALYSIS_CONTEXT_TOPK: z.coerce.number().int().positive().default(8),
   /** Max characters of regulatory text put into the analysis prompt. */
   ANALYSIS_MAX_REG_CHARS: z.coerce.number().int().positive().default(12_000),
+  /** How many recently-COMPLETED documents to check for missing notifications per cycle. */
+  NOTIFICATION_BATCH_SIZE: z.coerce.number().int().positive().default(10),
   NODE_ENV: z.string().default("development"),
 });
 

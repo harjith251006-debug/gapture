@@ -13,6 +13,7 @@ import { cleanAndChunkDocument } from "../intelligence/process-cleaning.js";
 import { embedAndIndexDocument } from "../intelligence/embed-and-index.js";
 import { processPolicyDocument } from "../intelligence/policy-pipeline.js";
 import { runAnalysisForDocument } from "../analysis/run-analysis.js";
+import { createNotificationsForDocument } from "../analysis/create-notification.js";
 
 /** Non-terminal statuses whose documents still need ingestion (Phase 5) work. */
 const PENDING_STATUSES = ["DETECTED", "RETRIEVED", "OCR_PROCESSING", "SECURED"];
@@ -24,6 +25,8 @@ const INDEXABLE_STATUSES = ["INDEXING"];
 const PROCESSABLE_POLICY_STATUSES = ["UPLOADED", "CLEANING", "INDEXING"];
 /** Documents ready for NLP analysis (Phase 9). */
 const ANALYZABLE_STATUSES = ["ANALYZING"];
+/** Terminal status whose analyses may still need notifications fanned out (Phase 11). */
+const NOTIFIABLE_STATUSES = ["COMPLETED"];
 
 const ADAPTERS: Record<string, SourceAdapter> = {
   RBI: rbiAdapter,
@@ -153,6 +156,7 @@ export async function runCycle(
   await processIndexableDocuments(supabase, log, config);
   await processPendingPolicies(supabase, log, config);
   await processAnalyzableDocuments(supabase, log, config);
+  await processPendingNotifications(supabase, log, config);
 
   log.info("poll cycle finished", { durationMs: Date.now() - startedAt });
 }
@@ -352,6 +356,46 @@ export async function processAnalyzableDocuments(
     else if (result.outcome === "held") held++;
   }
   log.info("analysis sweep finished", { attempted: pending.length, analyzed, held });
+}
+
+/**
+ * Notification sweep (Phase 11): for the most recently COMPLETED documents,
+ * fan out one notification per organization member who doesn't already have
+ * one. Entirely decoupled from analysis — a failure here only delays
+ * notifications, never an analysis. Idempotent (check-then-insert on
+ * document_id), so a re-run is a cheap no-op once everyone is notified.
+ */
+export async function processPendingNotifications(
+  supabase: WorkerSupabaseClient,
+  log: Logger,
+  config: Config,
+): Promise<void> {
+  const { data: docs, error } = await supabase
+    .from("regulatory_documents")
+    .select("id")
+    .in("status", NOTIFIABLE_STATUSES)
+    .order("updated_at", { ascending: false })
+    .limit(config.NOTIFICATION_BATCH_SIZE);
+
+  if (error) {
+    log.error("failed to load documents for notification fan-out", { error: error.message });
+    return;
+  }
+  if (!docs || docs.length === 0) {
+    log.debug("no completed documents to check for notifications");
+    return;
+  }
+
+  let created = 0;
+  let held = 0;
+  for (const row of docs) {
+    const result = await createNotificationsForDocument(supabase, log, row.id);
+    if (result.outcome === "created") created += result.notificationsCreated ?? 0;
+    else if (result.outcome === "held") held++;
+  }
+  if (created > 0 || held > 0) {
+    log.info("notification sweep finished", { checked: docs.length, created, held });
+  }
 }
 
 /**
