@@ -12,6 +12,8 @@ const schema = z.object({
   MAX_DOCUMENT_BYTES: z.coerce.number().int().positive().default(25 * 1024 * 1024),
   /** How many DETECTED-backlog documents to process per cycle (bounds OCR.space usage). */
   INGESTION_BATCH_SIZE: z.coerce.number().int().positive().default(5),
+  /** How many STORED documents to clean + chunk per cycle (pure CPU, no external limits). */
+  CLEANING_BATCH_SIZE: z.coerce.number().int().positive().default(10),
   NODE_ENV: z.string().default("development"),
 });
 

@@ -804,12 +804,29 @@ Phase 5 (`status = 'STORED'`, OCR text available in-process).
 5. Assign each chunk a stable `chunk_index` (unique per `(document_id, chunk_index)`, enforced by the Phase 2 constraint) so ordering and traceability back to the source document are never ambiguous.
 6. Update `regulatory_documents.status = 'INDEXING'` once chunks are persisted with `embedding_status = 'PENDING'`, ready for Phase 7.
 
-### Files / Modules
+### Files / Modules — AS BUILT (2026-09-11)
 ```text
 worker/src/intelligence/
-├── clean.ts
-└── chunk.ts
+├── clean.ts             # cleanDocumentText(raw) — invisible/exotic-char strip,
+│                        #   end-of-line de-hyphenation, page-furniture + repeated
+│                        #   running-header removal, blank-run collapse. Clause
+│                        #   numbering (12.3(a), (iv)) left byte-for-byte intact.
+├── chunk.ts             # chunkText(cleaned) — paragraph->sentence->hard-cut split,
+│                        #   TARGET 1400 / MAX 2000 chars, 150-char overlap,
+│                        #   trailing chunk < 250 merged back.
+└── process-cleaning.ts  # cleanAndChunkDocument(...) orchestrator: decrypt the
+                         #   Phase 5 extracted.enc sidecar -> clean -> chunk ->
+                         #   delete-then-batch-INSERT document_chunks -> advance
+                         #   STORED->CLEANING->INDEXING via advance_document_status.
+                         #   Never throws; failure records an event and holds.
+worker/src/monitoring/loop.ts   # + processCleanableDocuments() sweep (STORED /
+                                #   stuck-CLEANING, CLEANING_BATCH_SIZE=10/cycle),
+                                #   called in runCycle after the ingestion sweep.
+worker/src/config.ts            # + CLEANING_BATCH_SIZE (default 10)
 ```
+
+No new migration: `document_chunks` (migration 005) and `advance_document_status`
+(migration 014) already cover this phase.
 
 ### Dependencies
 No new external service — pure Node.js/TypeScript text processing (Tech Stack §14: "No separate AI service is required").
@@ -839,13 +856,24 @@ No new surface — this stage only transforms already-retrieved text in-process.
 Phase 5 (OCR text available).
 
 ### Definition of Done
-- [ ] A real OCR'd document produces sensible, section-aware chunks
-- [ ] All chunks for a document are inserted in one batched statement
-- [ ] `chunk_index` ordering is stable and unique per document
-- [ ] `status` correctly progresses through `CLEANING`/`INDEXING`
+- [x] A real OCR'd document produces sensible, section-aware chunks — verified against the 9 STORED docs (4 SEBI OCR + 5 RBI page-text): 2–6 chunks each, split on paragraph boundaries, every chunk ≤ 2000 chars. Clause `12.3(a)` and de-hyphenation checked in a unit smoke test.
+- [x] All chunks for a document are inserted in one batched statement — `document_chunks.insert(rows)` with the full array; prior chunks cleared first so re-runs are idempotent.
+- [x] `chunk_index` ordering is stable and unique per document — verified contiguous `0..n` for all 9 docs; `UNIQUE (document_id, chunk_index)` (migration 005) is the backstop.
+- [x] `status` correctly progresses through `CLEANING`/`INDEXING` — verified `STORED -> CLEANING -> INDEXING` with a `document_processing_events` row per transition (via `advance_document_status`). Final DB state: 9 INDEXING, 31 DETECTED.
+
+### Architecture decisions made in this phase
+- **Reads the encrypted `extracted.enc` sidecar, never re-OCRs.** The sidecar path is derived from `regulatory_documents.storage_path` (`.../original.enc` -> `.../extracted.enc`), decrypted with the same `DOCUMENT_ENCRYPTION_KEY`-derived AES key.
+- **Conservative cleaning.** Only unambiguous noise is removed (invisible chars, `Page N of M` lines, lone page numbers, running headers repeated >=4x). No stemming, no case-folding, no punctuation stripping — cleaning must never be why an obligation goes missing; the encrypted original stays retrievable regardless (BRD RISK-002).
+- **Character-based chunk budget** (TARGET 1400 / MAX 2000, ~500 tokens) as a model-agnostic proxy — comfortably inside any OpenAI embedding context window, small enough for precise retrieval. 150-char word-boundary overlap so a boundary-straddling clause is whole in at least one chunk.
+- **Own sweep, larger batch.** `processCleanableDocuments` runs after the ingestion sweep each cycle; `CLEANING_BATCH_SIZE` defaults to 10 (> ingestion's 5) since cleaning is pure CPU with no external rate limit. `CLEANABLE_STATUSES` includes `CLEANING` so a document interrupted mid-clean is retried.
+
+### Open / carried forward
+- A document interrupted between the batch `INSERT` and the `INDEXING` RPC would re-run cleaning next cycle (chunks are delete-then-insert, so this is safe, just wasted work).
+- Very short mid-document paragraphs can yield a sub-`MIN_CHUNK_CHARS` chunk when the *next* unit is large (the merge rule only applies to the trailing chunk). Observed once (RBI-13696, a 315-char chunk); acceptable for retrieval, not worth special-casing.
+- Phase 7 (Embeddings & Pinecone) consumes `document_chunks WHERE embedding_status = 'PENDING'` and the `INDEXING` status.
 
 ### Estimated Effort
-Hours: 12–20 · Complexity: Medium
+Hours: 12–20 · Complexity: Medium — **actual: ~1 session, low.** Pure text processing, no new service or migration.
 
 ---
 

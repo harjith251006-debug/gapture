@@ -9,9 +9,12 @@ import { retrieveViaWebScrape } from "./web-retrieval.js";
 import { runWatchdog } from "./watchdog.js";
 import { detectNewFiles } from "./new-file-detector.js";
 import { processDocument } from "../ingestion/process-document.js";
+import { cleanAndChunkDocument } from "../intelligence/process-cleaning.js";
 
-/** Non-terminal statuses whose documents still need pipeline work. */
+/** Non-terminal statuses whose documents still need ingestion (Phase 5) work. */
 const PENDING_STATUSES = ["DETECTED", "RETRIEVED", "OCR_PROCESSING", "SECURED"];
+/** Statuses whose documents still need cleaning + chunking (Phase 6). */
+const CLEANABLE_STATUSES = ["STORED", "CLEANING"];
 
 const ADAPTERS: Record<string, SourceAdapter> = {
   RBI: rbiAdapter,
@@ -137,6 +140,7 @@ export async function runCycle(
   );
 
   await processPendingDocuments(supabase, log, config);
+  await processCleanableDocuments(supabase, log, config);
 
   log.info("poll cycle finished", { durationMs: Date.now() - startedAt });
 }
@@ -178,6 +182,45 @@ export async function processPendingDocuments(
     else if (result.outcome === "held") held++;
   }
   log.info("ingestion sweep finished", { attempted: pending.length, stored, held });
+}
+
+/**
+ * Cleaning sweep (Phase 6): take up to CLEANING_BATCH_SIZE documents that are
+ * STORED (or stuck mid-CLEANING) and run each through decrypt -> clean ->
+ * chunk -> persist, oldest first. Pure CPU + DB, no external rate limits, so
+ * the batch can be larger than ingestion's. A per-document failure holds that
+ * document for a later retry and does not stop the sweep.
+ */
+export async function processCleanableDocuments(
+  supabase: WorkerSupabaseClient,
+  log: Logger,
+  config: Config,
+): Promise<void> {
+  const { data: pending, error } = await supabase
+    .from("regulatory_documents")
+    .select("id")
+    .in("status", CLEANABLE_STATUSES)
+    .order("detected_at", { ascending: true })
+    .limit(config.CLEANING_BATCH_SIZE);
+
+  if (error) {
+    log.error("failed to load documents for cleaning", { error: error.message });
+    return;
+  }
+  if (!pending || pending.length === 0) {
+    log.debug("no documents pending cleaning");
+    return;
+  }
+
+  log.info("cleaning sweep starting", { count: pending.length });
+  let cleaned = 0;
+  let held = 0;
+  for (const row of pending) {
+    const result = await cleanAndChunkDocument(supabase, log, config, row.id);
+    if (result.outcome === "cleaned") cleaned++;
+    else if (result.outcome === "held") held++;
+  }
+  log.info("cleaning sweep finished", { attempted: pending.length, cleaned, held });
 }
 
 /**
