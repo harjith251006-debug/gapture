@@ -8,12 +8,24 @@ const schema = z.object({
   OCR_SPACE_API_KEY: z.string().min(1),
   OCR_REQUEST_TIMEOUT_MS: z.coerce.number().int().positive().default(30_000),
   DOCUMENT_ENCRYPTION_KEY: z.string().min(1),
+  OPENAI_API_KEY: z.string().min(1),
+  OPENAI_EMBEDDING_MODEL: z.string().default("text-embedding-3-small"),
+  /** Must equal the Pinecone index dimension. gaptureai index = 1024. */
+  OPENAI_EMBEDDING_DIMENSIONS: z.coerce.number().int().positive().default(1024),
+  OPENAI_REQUEST_TIMEOUT_MS: z.coerce.number().int().positive().default(30_000),
+  PINECONE_API_KEY: z.string().min(1),
+  PINECONE_INDEX_HOST: z.string().url(),
+  PINECONE_REQUEST_TIMEOUT_MS: z.coerce.number().int().positive().default(30_000),
+  /** Pinecone namespace for regulatory-document vectors (policies use their own). */
+  PINECONE_NAMESPACE_REGULATORY: z.string().default("regulatory"),
   /** Max original-file size the worker will retrieve+store, in bytes. */
   MAX_DOCUMENT_BYTES: z.coerce.number().int().positive().default(25 * 1024 * 1024),
   /** How many DETECTED-backlog documents to process per cycle (bounds OCR.space usage). */
   INGESTION_BATCH_SIZE: z.coerce.number().int().positive().default(5),
   /** How many STORED documents to clean + chunk per cycle (pure CPU, no external limits). */
   CLEANING_BATCH_SIZE: z.coerce.number().int().positive().default(10),
+  /** How many INDEXING documents to embed + upsert to Pinecone per cycle. */
+  EMBEDDING_BATCH_SIZE: z.coerce.number().int().positive().default(5),
   NODE_ENV: z.string().default("development"),
 });
 

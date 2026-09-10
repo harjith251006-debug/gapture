@@ -229,7 +229,7 @@ Per explicit user instruction, Phase 1 (Project Foundation) and Phase 3 (Auth) w
 * **OCR.space integration built and verified end-to-end** against the real API key: `OcrProvider` interface, `OcrSpaceProvider` implementation (§8.3's spec, exactly), `OCRService` retry wrapper, and a server-only `POST /api/ocr/extract` Route Handler — confirmed the frontend has no path to call OCR.space directly (unauthenticated request returns 401 before OCR.space is ever reached).
 * **Supabase Auth built and verified against the real project**: email sign-up (with the project's actual `mailer_autoconfirm: false` confirmed live, so the "check your email" branch is the one that fires), email sign-in, **Google OAuth** (confirmed already enabled on the real project — `"google": true` in its live Auth settings), session persistence via `@supabase/ssr`, proxy-based route protection (Next.js 16 renamed `middleware.ts` → `proxy.ts`; verified `/dashboard` and `/` correctly redirect unauthenticated requests with a real 307), sign-out.
 * **What is NOT verified**: an actual end-to-end human sign-up/sign-in/Google-consent click-through (no browser automation available in this environment) — only server-side redirect/auth-check behavior was verified via `curl` against the real Supabase Auth API. See the final report delivered to the user for the exact list of manual verification steps remaining.
-* **Real credential status** (discovered mid-task — see the note in the chat transcript about credentials appearing in `.env.example` and being moved to gitignored files): Supabase ✅ live, Google OAuth already configured; OpenAI ✅ live; OCR.space ✅ live, full request/response cycle confirmed; ElevenLabs ⚠️ key valid but scoped without `user_read`/`voices_read`/`models_read`, and the account's free tier blocks TTS synthesis against library voices via the API (`paid_plan_required`) — Phase 14 is blocked on either an upgraded plan or a key with broader permissions plus an owned voice ID; Pinecone ⬜ no key provided yet, blocking Phase 7.
+* **Real credential status** (discovered mid-task — see the note in the chat transcript about credentials appearing in `.env.example` and being moved to gitignored files): Supabase ✅ live, Google OAuth already configured; OpenAI ✅ live; OCR.space ✅ live, full request/response cycle confirmed; ElevenLabs ⚠️ key valid but scoped without `user_read`/`voices_read`/`models_read`, and the account's free tier blocks TTS synthesis against library voices via the API (`paid_plan_required`) — Phase 14 is blocked on either an upgraded plan or a key with broader permissions plus an owned voice ID; Pinecone ✅ live (key + index `gaptureai` @ 1024-dim cosine; embed→upsert→query round-trip confirmed in Phase 7).
 
 ---
 
@@ -281,13 +281,13 @@ None (this is the first phase). Requires human action: creating accounts on Supa
 - [x] `.gitignore`, `.env.example`, `.nvmrc`, `README.md` created at repo root
 - [x] Git repository initialized (`git init`, default branch renamed to `main`) — first commit intentionally not yet made (see this session's commit policy: only on explicit request)
 - [x] OCR provider resolved: **OCR.space** (§8.3) — user decision, verified against real API docs
-- [x] Embedding model decided: **`text-embedding-3-small`, 1536 dimensions** (task E17) — verified against OpenAI's current API docs, not guessed
+- [x] Embedding model decided: **`text-embedding-3-small`** (task E17) — verified against OpenAI's current API docs, not guessed. **Dimension: 1024** (updated in Phase 7 — the provisioned Pinecone `gaptureai` index is 1024-dim; `text-embedding-3-small` emits 1024 natively via the `dimensions` param, so no model change. Original plan said 1536.)
 - [x] Git workflow decided: trunk-based, short feature branches, PR + CI gate before merge (task J27)
 - [x] Commit convention decided: Conventional Commits (task J28)
 - [ ] OpenAI chat/completions model and transcription model — **deliberately left unresolved**: current flagship-model naming couldn't be reliably verified via web search (conflicting/unreliable results from third-party pricing-tracker sites), so no specific model string is asserted here. Confirm directly in the OpenAI dashboard when the API key is created (task F19), then record the exact model chosen.
 - [ ] Supabase project created — **blocked: Supabase MCP connector not authorized for this session; requires either connecting it via claude.ai connector settings, or manual creation via supabase.com**
-- [ ] Pinecone account/index created — **needs manual action (no MCP integration available for Pinecone)**
-- [ ] OpenAI API key obtained — **needs manual action**
+- [x] Pinecone account/index created — index `gaptureai`, 1024-dim, cosine, host in `PINECONE_INDEX_HOST`
+- [x] OpenAI API key obtained — live, embeddings verified
 - [ ] ElevenLabs API key obtained — **needs manual action**
 - [ ] OCR.space API key obtained (registered free tier, not the `helloworld` demo key) — **needs manual action**
 - [ ] Worker-hosting provider decided — not yet raised with the user (not urgent until Phase 21)
@@ -319,7 +319,7 @@ None (this is the first phase). Requires human action: creating accounts on Supa
 
 **E. Pinecone**
 16. Create a Pinecone project and API key.
-17. Create the index with dimension **1536**, matching **`text-embedding-3-small`** (Architecture Decision, resolved — OpenAI's current cost-efficient embedding model per its own API docs; `text-embedding-3-large` at 3072 dimensions is the higher-accuracy alternative if retrieval quality proves insufficient against real regulatory/policy text — that would require a full re-embed and a new index, so this choice is treated as effectively locked once real documents are indexed in Phase 7).
+17. **DONE** — index `gaptureai` exists at dimension **1024**, metric cosine. `text-embedding-3-small` is configured to emit 1024 via the `dimensions` API parameter (`OPENAI_EMBEDDING_DIMENSIONS`). `text-embedding-3-large` (3072) remains the higher-accuracy fallback but would need a new index + full re-embed. Locked now that real vectors are indexed (Phase 7).
 18. Verify connectivity: a trivial upsert + query round trip against the created index.
 
 **F. OpenAI**
@@ -894,16 +894,36 @@ Phase 6 (chunks exist with `embedding_status = 'PENDING'`), Phase 0 (Pinecone in
 6. On embedding/Pinecone failure, leave affected chunks at `PENDING` (retryable) rather than marking `FAILED` prematurely; only mark `FAILED` after retries are exhausted (HLSA §21).
 7. Update `regulatory_documents.status = 'ANALYZING'` once all of a document's chunks are `EMBEDDED`, handing off to Phase 9.
 
-### Files / Modules
+### Files / Modules — AS BUILT (2026-09-11)
 ```text
-packages/shared/src/services/
-├── embeddings/embedding-service.ts
-└── pinecone/pinecone-client.ts
-worker/src/intelligence/embed-and-index.ts
+packages/shared/src/services/embeddings/
+├── types.ts                              # EmbeddingError, EmbeddingResult
+├── embedding-provider.interface.ts       # EmbeddingProvider (model, dimension,
+│                                         #   maxInputsPerCall, embed())
+├── embedding-service.ts                  # EmbeddingService — retry/backoff +
+│                                         #   transparent sub-batching (embedTexts)
+└── providers/openai-embedding-provider.ts# raw fetch; passes `dimensions` so
+                                          #   text-embedding-3-small emits 1024
+packages/shared/src/services/pinecone/
+├── types.ts                              # PineconeError, PineconeVector, Match
+└── pinecone-client.ts                    # upsert() + query() only, raw fetch to
+                                          #   the index host, internal retry/backoff
+worker/src/intelligence/embed-and-index.ts# embedAndIndexDocument(): fetch PENDING
+                                          #   chunks -> 1 embed call -> 1 Pinecone
+                                          #   upsert (ns=regulatory, meta=doc_id+
+                                          #   chunk_index) -> flip chunks EMBEDDED
+                                          #   in one upsert -> advance INDEXING ->
+                                          #   ANALYZING. Never throws.
+worker/src/monitoring/loop.ts             # + processIndexableDocuments() sweep,
+                                          #   EMBEDDING_BATCH_SIZE (default 5)
+worker/src/config.ts                      # + OPENAI_* and PINECONE_* vars
 ```
 
 ### Dependencies
-`openai` SDK (embeddings endpoint), `@pinecone-database/pinecone` SDK.
+**No new npm packages.** Both the OpenAI Embeddings API and the Pinecone data
+plane are called with raw `fetch` (consistent with the `OcrSpaceProvider`
+precedent — keeps the worker's dependency surface minimal). The `openai` /
+`@pinecone-database/pinecone` SDKs named in the original plan were not needed.
 
 ### Database Impact
 Batch `UPDATE` on `document_chunks` (`embedding_status`, `pinecone_vector_id`); `regulatory_documents.status → ANALYZING`. No Pinecone-side data is ever treated as authoritative for anything PostgreSQL already owns (DB Schema §9, HLSA §9).
@@ -932,13 +952,26 @@ None directly — internal worker/backend pipeline stage. This does establish th
 Phase 6 (chunks exist), Phase 0 (Pinecone index provisioned with the correct dimension).
 
 ### Definition of Done
-- [ ] A real document's chunks are embedded and queryable in Pinecone end-to-end
-- [ ] Batch upsert/update patterns verified (no N+1 calls)
-- [ ] Pinecone-unavailable failure path verified to degrade gracefully, not fabricate results
-- [ ] `pinecone_vector_id` round-trips correctly back to its source chunk
+- [x] A real document's chunks are embedded and queryable in Pinecone end-to-end — all 9 ANALYZING docs (30 chunks) embedded and upserted; `describe_index_stats` shows `regulatory` namespace = 30 vectors, dimension 1024, matching the 30 EMBEDDED chunks in Postgres.
+- [x] Batch upsert/update patterns verified (no N+1 calls) — one OpenAI embed call + one Pinecone upsert per *document* (logged `vectorsUpserted` once per doc); chunk status flipped in a single `upsert(..., {onConflict:'id'})`.
+- [x] Pinecone-unavailable failure path verified to degrade gracefully, not fabricate results — a document run against a dead index host returned `outcome: held`, stayed at `INDEXING`, and its chunks stayed `PENDING` (never `FAILED`, never partially marked). A later sweep completed it.
+- [x] `pinecone_vector_id` round-trips correctly back to its source chunk — re-embedded a known chunk, queried Pinecone (`topK 3`), top match `score 0.9992`, `metadata` = `{document_id, chunk_index}`, resolved by `pinecone_vector_id` back to the exact chunk row and parent document.
+
+### Architecture decisions made in this phase
+- **Embedding dimension is 1024, not 1536.** The provisioned Pinecone index `gaptureai` is 1024-dim / cosine. `text-embedding-3-small` emits 1024 natively via the API `dimensions` parameter (Matryoshka truncation), so no index recreation and no model change — the plan's "1536" assumption (§0 task E17) is superseded by the real index. `OPENAI_EMBEDDING_DIMENSIONS` is an explicit env var and MUST equal the index dimension.
+- **Raw `fetch`, no SDKs** (see Dependencies above).
+- **No new migration.** Chunk status is flipped with a bulk `upsert` on the `id` PK (one statement, all NOT NULL columns re-sent) instead of the DB-Schema-§33 `UPDATE ... FROM (VALUES ...)` RPC; document advance reuses the existing `advance_document_status` RPC (migration 014). Equivalent "one statement, no N+1" outcome without a schema change.
+- **Deterministic vector id** `${document_id}:${chunk_index}` — a re-run upserts the same Pinecone rows (idempotent) and needs no id bookkeeping.
+- **Namespace per content type** — regulatory vectors go to the `regulatory` namespace; Phase 8 policies will use their own, keeping a single 1024-dim index cleanly partitioned.
+- **`ANALYZING` only when zero chunks remain `PENDING`** — a partial embedding failure holds the document at `INDEXING` for the next sweep to finish.
+
+### Open / carried forward
+- A non-retryable Pinecone error (e.g. 401 malformed host) currently also just "holds" the document — correct for MVP (surfaced via a processing event, no data loss) but a genuinely misconfigured key would loop forever; Phase 19/21 monitoring should alert on a document stuck at `INDEXING` across many cycles.
+- Retry exhaustion never marks chunks `FAILED` yet (plan task 6) — the per-cycle sweep retries indefinitely. Acceptable while volume is low; revisit with the Phase 21 dead-letter discussion.
+- Phase 9 (NLP Engine) consumes the `ANALYZING` status and queries this Pinecone namespace for regulatory context.
 
 ### Estimated Effort
-Hours: 14–22 · Complexity: Medium
+Hours: 14–22 · Complexity: Medium — **actual: ~1 session.** No SDKs, no migration; the one surprise was the index dimension.
 
 ---
 

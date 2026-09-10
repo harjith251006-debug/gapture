@@ -10,11 +10,14 @@ import { runWatchdog } from "./watchdog.js";
 import { detectNewFiles } from "./new-file-detector.js";
 import { processDocument } from "../ingestion/process-document.js";
 import { cleanAndChunkDocument } from "../intelligence/process-cleaning.js";
+import { embedAndIndexDocument } from "../intelligence/embed-and-index.js";
 
 /** Non-terminal statuses whose documents still need ingestion (Phase 5) work. */
 const PENDING_STATUSES = ["DETECTED", "RETRIEVED", "OCR_PROCESSING", "SECURED"];
 /** Statuses whose documents still need cleaning + chunking (Phase 6). */
 const CLEANABLE_STATUSES = ["STORED", "CLEANING"];
+/** Statuses whose documents still need embedding + Pinecone indexing (Phase 7). */
+const INDEXABLE_STATUSES = ["INDEXING"];
 
 const ADAPTERS: Record<string, SourceAdapter> = {
   RBI: rbiAdapter,
@@ -141,6 +144,7 @@ export async function runCycle(
 
   await processPendingDocuments(supabase, log, config);
   await processCleanableDocuments(supabase, log, config);
+  await processIndexableDocuments(supabase, log, config);
 
   log.info("poll cycle finished", { durationMs: Date.now() - startedAt });
 }
@@ -221,6 +225,46 @@ export async function processCleanableDocuments(
     else if (result.outcome === "held") held++;
   }
   log.info("cleaning sweep finished", { attempted: pending.length, cleaned, held });
+}
+
+/**
+ * Embedding sweep (Phase 7): take up to EMBEDDING_BATCH_SIZE INDEXING
+ * documents and run each through embed -> Pinecone upsert -> mark chunks
+ * EMBEDDED -> advance to ANALYZING, oldest first. Bounded because each
+ * document is one OpenAI call + one Pinecone upsert. A per-document failure
+ * leaves that document's chunks PENDING for a later retry and does not stop
+ * the sweep.
+ */
+export async function processIndexableDocuments(
+  supabase: WorkerSupabaseClient,
+  log: Logger,
+  config: Config,
+): Promise<void> {
+  const { data: pending, error } = await supabase
+    .from("regulatory_documents")
+    .select("id")
+    .in("status", INDEXABLE_STATUSES)
+    .order("detected_at", { ascending: true })
+    .limit(config.EMBEDDING_BATCH_SIZE);
+
+  if (error) {
+    log.error("failed to load documents for embedding", { error: error.message });
+    return;
+  }
+  if (!pending || pending.length === 0) {
+    log.debug("no documents pending embedding");
+    return;
+  }
+
+  log.info("embedding sweep starting", { count: pending.length });
+  let indexed = 0;
+  let held = 0;
+  for (const row of pending) {
+    const result = await embedAndIndexDocument(supabase, log, config, row.id);
+    if (result.outcome === "indexed") indexed++;
+    else if (result.outcome === "held") held++;
+  }
+  log.info("embedding sweep finished", { attempted: pending.length, indexed, held });
 }
 
 /**
