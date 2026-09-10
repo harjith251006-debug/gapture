@@ -42,3 +42,6 @@ Thumbs.db
 *.log
 npm-debug.log*
 pnpm-debug.log*
+
+# e2e smoke test local state
+worker/scripts/.e2e-state.json

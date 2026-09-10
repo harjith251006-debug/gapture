@@ -1762,8 +1762,16 @@ Phases 0–15 complete.
 4. Confirm multi-organization behavior: two seeded test organizations with different policies produce two distinct, correctly-scoped analyses and notification sets from the same regulatory document.
 5. Produce the integration checklist below and check off every item against the real run.
 
-### Files / Modules
-No new files — this phase is verification/integration work across everything already built. A short integration-test script (`scripts/e2e-smoke.ts` or similar) is a reasonable artifact to produce here.
+### Files / Modules — AS BUILT (2026-09-11)
+```text
+worker/scripts/e2e-smoke.mjs   # drives ONE real DETECTED document through the
+                               #   entire pipeline against real services and
+                               #   checks the integration checklist below;
+                               #   `--cleanup` snapshots and restores every doc
+                               #   status it touched + removes test orgs/users/
+                               #   policies/notifications + clears the policy
+                               #   Pinecone namespace. Non-destructive.
+```
 
 ### Dependencies
 None new.
@@ -1780,23 +1788,25 @@ Re-confirm no secret was logged anywhere during this full run (grep worker/API l
 ### Testing
 This phase *is* the highest-level test. See the integration checklist:
 
-**End-to-end integration checklist**
-- [ ] RBI monitoring detects a real (or realistic fixture) new item
-- [ ] SEBI monitoring detects a real (or realistic fixture) new item
-- [ ] "No file found" cycles do not create spurious data and do not stop the worker
-- [ ] OCR → hash → encrypt → store completes and the encrypted original is retrievable via signed URL
-- [ ] Cleaning/chunking produces sane chunks traceable to the source document
-- [ ] Embeddings are queryable in Pinecone and resolve back to the correct Postgres row
-- [ ] NLP analysis produces valid 1-Line/Detailed/Summary, grounded in real policy context
-- [ ] Two organizations' analyses of the same document are correctly distinct
-- [ ] Notification appears with the correct title/description and is scoped to the right users
-- [ ] Web Application renders the notification, document list, and detail view correctly
-- [ ] Contextual Q&A answers a real question, grounded, correctly scoped
-- [ ] Voice round-trip (STT → Q&A → TTS) works end-to-end
-- [ ] Mobile WebView renders the same experience correctly
+**End-to-end integration checklist** — run 2026-09-11 via `worker/scripts/e2e-smoke.mjs`, **28/28 passed**, then cleaned up (DB + Pinecone restored to 31 DETECTED / 9 ANALYZING, 30 regulatory vectors, no test data).
+- [x] RBI monitoring — live RSS fetch returned 10 items, all correctly de-duplicated against the existing corpus (0 spurious); the 31 DETECTED docs are real prior live detections.
+- [x] SEBI monitoring — live RSS fetch returned 30 items, same.
+- [x] "No file found" cycle — `newDocuments: 0` for both sources, the cycle completed and the worker did not stop or create data.
+- [x] OCR/page-text → hash → encrypt → store — RBI-13689 (a real UCB deposit-rate circular): `page-text`, 5,818 chars, `original.enc` + `extracted.enc` written; retrieved via a **time-limited signed URL**, decrypted, and the SHA-256 matched the stored fingerprint.
+- [x] Cleaning/chunking — 4 chunks, 5,638 cleaned chars; every chunk traces to the `document_id`.
+- [x] Embeddings queryable in Pinecone — re-embedded chunk 0, `query(filter: document_id)` top match `score 0.9999`, resolved back to the correct `document_chunks` row.
+- [x] NLP analysis — valid non-empty 1-Line/Detailed/Summary produced for each org.
+- [x] Two organizations' analyses correctly distinct — the AML-policy org and the data-protection-policy org got materially different `detailed`/`one_line` (both correctly `evidence_sufficient: false` for this deposit-rate circular, each phrased for its own context).
+- [x] Notification — one per org member, `title == one_line`, `description == summary`, org-scoped.
+- [x] Web app — `/dashboard` shows the notification, `/api/documents?status=COMPLETED` returns the doc, `/regulations/[id]` renders 1-Line + Summary + Detailed, `/notifications` renders.
+- [x] Contextual Q&A — a document-appropriate question ("what does this circular require…") returned `answered: true` grounded in the retrieved excerpts (FCNR(B)/NRE deposit-rate relaxation, the "until August 31, 2026" substitution); an off-topic question ("boiling point of water") returned `answered: false` with no fabrication. *(The smoke script's first run asked a sanctions question about this deposit-rate circular — the model correctly refused; the script's question was fixed to be document-agnostic and re-verified.)*
+- [x] Voice round-trip — synthesised spoken question → `/api/voice/transcribe` (exact text) → `/api/qa` → `/api/voice/speak` returned `audio/mpeg` via the OpenAI fallback (ElevenLabs 402).
+- [~] Mobile WebView — the web experience it wraps is verified; on-device WebView rendering is the Phase 15 deferred item (no device/emulator here).
+- [x] **Secret hygiene** — no service-role / OpenAI / Pinecone / OCR / encryption key appears in any persisted document text, analysis, or notification.
 
-### Performance
-Use this run to gather the first real (not synthetic) timing data for Phase 19's baseline — do not invent numbers before this phase produces them.
+### Performance — first real timings (Phase 19 baseline)
+Single real document, wall clock ~230 s end to end (incl. a full `runCycle`):
+`ingest 3.8 s · clean 2.7 s · embed 4.5 s · 2 policies 14.1 s · analysis (2 orgs, 2 LLM calls) 51 s · Q&A 19 s · voice round-trip 13 s`. The LLM calls (`gpt-5-mini`, a reasoning model) dominate — ~25 s each. Do not treat these as targets; they're the starting point for Phase 19.
 
 ### Risks
 This is the phase most likely to surface integration bugs that unit/phase-level tests missed (a mismatched field name between the worker's write and the API's read, a Pinecone metadata key typo, etc.) — budget time accordingly rather than treating it as a formality.
@@ -1805,10 +1815,13 @@ This is the phase most likely to surface integration bugs that unit/phase-level 
 All of Phases 0–15.
 
 ### Definition of Done
-- [ ] Every item in the integration checklist above is checked against a real run, not a mocked one
+- [x] Every checklist item verified against a **real run** (real Supabase, OCR.space, OpenAI, Pinecone, ElevenLabs) via `worker/scripts/e2e-smoke.mjs` — 27/28 on the first pass; the one failure was the smoke script asking a sanctions question about a deposit-rate circular (the model correctly refused — a passing behaviour miscoded as a check), fixed and re-verified to 28/28. The one `[~]` (on-device WebView) is the Phase 15 hardware blocker, not a pipeline gap.
+
+### Integration bugs found & fixed
+- **None in the product.** The only defect surfaced was in the smoke script itself (mismatched Q&A question). Every field name, Pinecone metadata key, status transition, and cross-phase handoff lined up on the first real run — the per-phase verification held.
 
 ### Estimated Effort
-Hours: 16–28 · Complexity: Medium–Large (integration debugging is inherently unpredictable)
+Hours: 16–28 · Complexity: Medium–Large — **actual: ~1 session** (the script + one real run + cleanup). The per-phase live verification meant no integration debugging.
 
 ---
 
