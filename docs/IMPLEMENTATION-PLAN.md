@@ -1194,21 +1194,41 @@ Phases 2–9 (data exists to serve), Phase 3 (auth/session validation available)
 9. Apply Zod validation to every request body/query param (`skills/api-testing-reporting.md`); return one consistent response envelope across all routes; never leak a raw Postgres/Supabase error to the client — catch, log server-side, return a clean error shape (CLAUDE.md, HLSA §26).
 10. Confirm every route validates the session server-side before querying (Phase 3's middleware/helper), and that no route trusts a client-supplied `organization_id` (HLSA §15/§26).
 
-### Files / Modules
+### Files / Modules — AS BUILT (2026-09-11)
 ```text
+apps/web/lib/
+├── api.ts                    # ok()/apiError() envelope, route() wrapper (no raw
+│                             #   SQL error ever reaches the client), requireSession,
+│                             #   requireOrganizationId (org always server-derived),
+│                             #   Zod parse helpers, keyset pagination helpers
+├── supabase/admin.ts         # createAdmin() — service-role client for privileged
+│                             #   writes (contextual_interactions has no client
+│                             #   INSERT RLS policy)
+└── qa.ts                     # createContextualQaService() from server env
 apps/web/app/api/
-├── documents/route.ts
-├── documents/[id]/route.ts
-├── notifications/route.ts
-├── notifications/[id]/read/route.ts
-├── notifications/unread-count/route.ts
-├── policies/route.ts             # from Phase 8
-├── qa/route.ts
-└── qa/history/route.ts
+├── documents/route.ts            # GET — keyset list, regulatory_sources!inner
+├── documents/[id]/route.ts       # GET — get_document_with_latest_analysis RPC
+├── notifications/route.ts        # GET — keyset feed, zero join
+├── notifications/[id]/read/route.ts   # PATCH — is_read/read_at only, own rows
+├── notifications/unread-count/route.ts# GET — head+count on partial index
+├── policies/route.ts             # POST/GET — reworked onto the shared envelope
+├── qa/route.ts                   # POST — ContextualQaService + persist interaction
+└── qa/history/route.ts           # GET — this user's Q&A for one document
+packages/shared/src/services/llm/contextual-qa.ts  # ContextualQaService: embed
+                                   #   question -> Pinecone (regulatory filtered by
+                                   #   document_id + policy filtered by
+                                   #   organization_id) -> resolve to Postgres text
+                                   #   -> grounded LLM answer; empty retrieval ->
+                                   #   explicit "cannot answer", never model
+                                   #   general knowledge. Minimal here; Phase 13
+                                   #   refines retrieval blend, prompt, frontend.
+apps/web/.env.example              # created
 ```
 
 ### Dependencies
-Zod (validation), the shared Supabase client factory (Phase 3).
+`zod` added to `@gapture/web`. No `openai`/`@pinecone-database` SDKs — the Q&A
+service reuses `@gapture/shared`'s `EmbeddingService` / `PineconeClient` and a
+raw `fetch` chat call, exactly like Phase 9.
 
 ### Database Impact
 Read-heavy phase — no schema change. Every query in this phase maps directly to one of the 10 named, `EXPLAIN ANALYZE`-measured queries in DB Schema §44; none introduces a new access pattern that wasn't already designed for in Phase 2.
@@ -1247,11 +1267,30 @@ This phase **is** the API surface. See the endpoint table below (also referenced
 Phases 2, 3, 5–9 (data + auth foundations).
 
 ### Definition of Done
-- [ ] All 8 endpoints implemented, tested, and passing the N+1/session/cross-org checks above
-- [ ] `docs/api/API-SPEC.md` written, capturing this endpoint table as the project's de facto API contract
+- [x] All 8 endpoints implemented and tested against a running `next dev` + the live Supabase project (two seeded test users in two orgs):
+  - **Session:** every route returns `401 {error:{code:"unauthorized"}}` with no session.
+  - **Envelope:** success `{data, nextCursor?}`, failure `{error:{code,message}}` — uniform across all 8. `route()` catches unhandled throws → `500 {error:{code:"internal"}}` with the real error logged server-side only.
+  - **`GET /api/documents`:** keyset page 1 → page 2 (via `nextCursor`) returned disjoint rows; `regulatory_sources` joined in one round trip.
+  - **`GET /api/documents/[id]`:** one RPC round trip; `400` on non-uuid, `404` on unknown id.
+  - **`GET /api/notifications` + cross-org:** user A's feed never contained user B's notification. `unread-count` = 2, dropped to 1 after `PATCH .../read`.
+  - **`PATCH /api/notifications/[id]/read`:** set `is_read`+`read_at`; patching **user B's** notification as A → `404` (RLS, not a leak).
+  - **`POST /api/qa`:** `400` on a 2-char question; against a document with no indexed chunks → `201 answered:false` with an explicit "no context" answer (**no fabrication**); against an embedded document → `201 answered:true` with an answer grounded in the retrieved circular text (UNSC lists, s.51A UAPA, Ch. IX RBI KYC Directions — all from context). Q&A pair persisted; `GET /api/qa/history` returned it.
+- [x] `docs/api/API-SPEC.md` written — the endpoint table + envelope + auth model as the de facto contract.
+
+### Architecture decisions made in this phase
+- **One `lib/api.ts` toolkit, not per-route boilerplate.** `route()` is the only place errors are caught; `requireSession` / `requireOrganizationId` are the only place auth/org are resolved (org is **always** from `profiles` via the session, never the request body/query — plan task 10).
+- **Keyset pagination via a `.or()` predicate.** PostgREST has no row-value comparison, so `(created_at, id) < cursor` is expressed as `created_at.lt.X,and(created_at.eq.X,id.lt.Y)`; the cursor is an opaque base64url of `{createdAt,id}`; the query fetches `limit+1` to derive `nextCursor`.
+- **`/api/qa` is real, not a stub.** Phase 13's prereq is "the `/api/qa` route exists", so the route + a working minimal `ContextualQaService` ship now (reusing Phases 7–9 infra). Phase 13 refines retrieval blending, the prompt, and adds `QuestionInterface.tsx`.
+- **`contextual_interactions` insert uses the service-role client** (`lib/supabase/admin.ts`) — the table has a SELECT-only RLS policy by design; the `trg_interactions_set_org` trigger fills `organization_id`.
+- **Policies route reworked onto the shared envelope** (`{data}` / `{error:{code,message}}`), and `PolicyUpload.tsx` updated to match. `apps/web/.env.example` created (didn't exist).
+
+### Open / carried forward
+- No automated test suite yet — verification was a scripted `next dev` run, torn down after. Phase 19 owns a persistent API test suite.
+- `/api/qa` retrieval is deliberately simple (top-k each namespace, concatenate). Phase 13 should weight/interleave regulatory vs policy context and tune `topK`.
+- `GET /api/qa/history` uses `LIMIT 20` (Query 9 shape) without a cursor — fine for the per-document history size; add keyset if it ever needs deep paging.
 
 ### Estimated Effort
-Hours: 24–36 · Complexity: Medium
+Hours: 24–36 · Complexity: Medium — **actual: ~1 session.** The shared `lib/api.ts` did most of the work once; each route is then ~30 lines.
 
 ---
 

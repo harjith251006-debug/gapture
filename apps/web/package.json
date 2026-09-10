@@ -10,21 +10,22 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@gapture/shared": "workspace:*",
+    "@supabase/ssr": "latest",
+    "@supabase/supabase-js": "latest",
     "next": "latest",
     "react": "latest",
     "react-dom": "latest",
-    "@supabase/supabase-js": "latest",
-    "@supabase/ssr": "latest",
-    "@gapture/shared": "workspace:*"
+    "zod": "^4.6.1"
   },
   "devDependencies": {
-    "typescript": "^5",
+    "@tailwindcss/postcss": "latest",
     "@types/node": "latest",
     "@types/react": "latest",
     "@types/react-dom": "latest",
-    "tailwindcss": "latest",
-    "@tailwindcss/postcss": "latest",
     "eslint": "^9",
-    "eslint-config-next": "latest"
+    "eslint-config-next": "latest",
+    "tailwindcss": "latest",
+    "typescript": "^5"
   }
 }

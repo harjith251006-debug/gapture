@@ -29,13 +29,12 @@ export function PolicyUpload() {
       const res = await fetch("/api/policies", { method: "POST", body });
       const json = await res.json();
       if (!res.ok) {
-        setMessage({ kind: "err", text: json.error ?? `Upload failed (${res.status})` });
+        setMessage({ kind: "err", text: json.error?.message ?? `Upload failed (${res.status})` });
       } else {
+        const p = json.data;
         setMessage({
           kind: "ok",
-          text: json.warning
-            ? `Uploaded "${json.title}" — ${json.warning}`
-            : `Uploaded "${json.title}". Processing…`,
+          text: p.warning ? `Uploaded "${p.title}" — ${p.warning}` : `Uploaded "${p.title}". Processing…`,
         });
         setFile(null);
         setTitle("");

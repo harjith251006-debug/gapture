@@ -16,3 +16,4 @@ export * from "./services/pinecone/pinecone-client";
 export * from "./services/llm/types";
 export * from "./services/llm/prompts/analysis-prompt";
 export * from "./services/llm/nlp-analysis";
+export * from "./services/llm/contextual-qa";
