@@ -1,0 +1,17 @@
+{
+  "name": "gapture",
+  "private": true,
+  "version": "0.0.0",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "packageManager": "pnpm@10.33.2",
+  "scripts": {
+    "dev": "pnpm --filter @gapture/web dev",
+    "dev:worker": "pnpm --filter @gapture/worker dev",
+    "build": "pnpm --filter @gapture/web build",
+    "lint": "pnpm -r lint",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test"
+  }
+}
