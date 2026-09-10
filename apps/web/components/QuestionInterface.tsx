@@ -165,8 +165,10 @@ export function QuestionInterface({ documentId }: { documentId: string }) {
                   : "border-slate-200 dark:border-slate-800"
               }`}
             >
-              <p className="text-sm font-medium">{qa.question}</p>
-              <p className="mt-1 whitespace-pre-wrap text-sm text-slate-700 dark:text-slate-300">{qa.answer}</p>
+              <p className="break-words text-sm font-medium">{qa.question}</p>
+              <p className="mt-1 whitespace-pre-wrap break-words text-sm text-slate-700 dark:text-slate-300">
+                {qa.answer}
+              </p>
               {qa.answered === false && (
                 <p className="mt-1.5 text-xs font-medium text-amber-700 dark:text-amber-400">
                   Not enough context to answer confidently

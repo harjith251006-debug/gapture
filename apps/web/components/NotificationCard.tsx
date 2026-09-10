@@ -34,10 +34,10 @@ export function NotificationCard({
           aria-hidden
         />
         <span className="min-w-0 flex-1">
-          <span className="block text-sm">{n.title}</span>
+          <span className="block break-words text-sm">{n.title}</span>
           <span className="block text-xs text-slate-400">{new Date(n.createdAt).toLocaleString()}</span>
           {expanded && (
-            <span className="mt-2 block whitespace-pre-wrap text-sm text-slate-600 dark:text-slate-300">
+            <span className="mt-2 block whitespace-pre-wrap break-words text-sm text-slate-600 dark:text-slate-300">
               {n.description}
               <Link
                 href={`/regulations/${n.documentId}`}

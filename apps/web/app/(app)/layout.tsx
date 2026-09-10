@@ -3,12 +3,16 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { SignOutButton } from "@/components/SignOutButton";
 import { NotificationBell } from "@/components/NotificationBell";
+import { MobileNav } from "@/components/MobileNav";
 
 /**
  * Belt-and-suspenders check: middleware.ts already redirects unauthenticated
  * requests away from anything under this route group, but a Server
  * Component-level check ensures the same holds even if middleware's matcher
  * is ever narrowed by mistake.
+ *
+ * Navigation: a top bar on `sm`+ screens, a fixed bottom tab bar on phones
+ * (<MobileNav/>).
  */
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient();
@@ -21,11 +25,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   }
 
   return (
-    <div className="min-h-screen">
-      <header className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 border-b border-slate-200 px-4 py-3 sm:px-6 dark:border-slate-800">
-        <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+    <div className="min-h-dvh">
+      <header className="flex items-center justify-between border-b border-slate-200 px-4 py-3 sm:px-6 dark:border-slate-800">
+        <div className="flex items-center gap-6">
           <span className="font-semibold">Gapture</span>
-          <nav className="flex items-center gap-4 text-sm text-slate-500">
+          <nav className="hidden items-center gap-4 text-sm text-slate-500 sm:flex">
             <Link href="/dashboard" className="hover:text-slate-900 dark:hover:text-slate-100">
               Dashboard
             </Link>
@@ -37,13 +41,18 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             </Link>
           </nav>
         </div>
-        <div className="flex flex-wrap items-center gap-3 text-sm">
-          <NotificationBell />
-          <span className="hidden text-slate-500 sm:inline">{user.email}</span>
+        <div className="flex items-center gap-3 text-sm">
+          <span className="hidden sm:block">
+            <NotificationBell />
+          </span>
+          <span className="hidden text-slate-500 md:inline">{user.email}</span>
           <SignOutButton />
         </div>
       </header>
-      <main className="mx-auto p-4 sm:p-6">{children}</main>
+
+      <main className="mx-auto max-w-2xl p-4 pb-24 sm:p-6 sm:pb-10">{children}</main>
+
+      <MobileNav />
     </div>
   );
 }

@@ -1714,11 +1714,33 @@ Phase 12 (and implicitly Phase 14, for voice-in-WebView testing).
 - **HTTPS-only** (`network_security_config` `cleartextTrafficPermitted=false`, `usesCleartextTraffic=false`); a dev-only `10.0.2.2`/`localhost` cleartext exception is present but the `Secure` session cookie still needs an HTTPS tunnel for real testing.
 - **Google OAuth in a WebView is a known gap** — Google blocks embedded-WebView OAuth; the correct fix is a PKCE + deep-link (`ai.gapture.mobile://auth/callback`) flow the shell intercepts. Not built (needs device testing). Email/password works unchanged. Documented in `mobile/README.md`.
 
+### Scope adjustment (2026-09-11, per user direction)
+The native WebView shell (above) is scaffolded but its DoD is on-device
+verification, which this environment can't do. Per the user, effort moved to
+**making the web app itself properly mobile-first** — the same UI the WebView
+would render, and what most users will actually use on a phone browser
+anyway. Done and verified against `next dev`:
+- **Fixed bottom tab bar** (`components/MobileNav.tsx`, `sm:hidden`) — Home /
+  Regulations / Policies / Alerts (with unread badge). The top header nav is
+  `hidden … sm:flex`; the header notification bell is `hidden sm:block`.
+- **iOS focus-zoom killed** — form controls forced to 16px under 640px.
+- **44px min tap targets** on `pointer: coarse`.
+- **Safe-area insets** — `html` padding + bottom-nav `padding-bottom:
+  env(safe-area-inset-bottom)` + `viewport-fit=cover`; `theme-color` per
+  scheme; `min-h-dvh` (dynamic viewport height).
+- **No horizontal scroll** — `overflow-x: hidden` on `body`; `break-words` on
+  every long-text block (titles, 1-Line/Summary/Detailed, Q&A answers,
+  notification/policy rows).
+- `main` bottom padding clears the fixed nav (`pb-24 sm:pb-10`).
+Verified: all `(app)` pages 200 with the bottom nav, auth pages without it,
+document detail + Q&A + voice button render, no server errors.
+
 ### Open / carried forward
-- **On-device verification of the whole golden path + the mic-permission flow** — the actual DoD, blocked on tooling/device/deployment. Do this after Phase 16/deployment on a machine with Android Studio.
-- Google OAuth deep-link flow for mobile.
+- **On-device verification of the native shell** (golden path + mic-permission
+  flow inside the actual WebView) — blocked on tooling/device/deployment.
+- Google OAuth deep-link flow for the native shell.
 - `mobile/ios/` shell.
-- `gradle-wrapper.jar` is gitignored (binary; Android Studio regenerates it on first sync).
+- `gradle-wrapper.jar` is gitignored (binary; Android Studio regenerates it).
 
 ### Estimated Effort
 Hours: 12–20 · Complexity: Small–Medium — **scaffold ~1 session; on-device verification still owed and needs hardware this environment lacks.**

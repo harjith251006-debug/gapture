@@ -16,11 +16,11 @@ export function SummaryView({ analysis }: { analysis: AnalysisData }) {
     <div className="space-y-4">
       <section>
         <h2 className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-400">1-Line</h2>
-        <p className="text-sm font-medium leading-snug">{analysis.oneLine}</p>
+        <p className="text-sm font-medium leading-snug break-words">{analysis.oneLine}</p>
       </section>
       <section>
         <h2 className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-400">Summary</h2>
-        <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-700 dark:text-slate-300">
+        <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-slate-700 dark:text-slate-300">
           {analysis.summary}
         </p>
       </section>

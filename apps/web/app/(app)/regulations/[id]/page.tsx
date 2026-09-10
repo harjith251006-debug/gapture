@@ -71,7 +71,7 @@ export default async function RegulationDetailPage({ params }: { params: Promise
           <SourceBadge code={row.source_code} />
           <StatusBadge status={row.status} />
         </div>
-        <h1 className="text-lg font-semibold leading-snug">{row.title}</h1>
+        <h1 className="text-lg font-semibold leading-snug break-words">{row.title}</h1>
         {row.source_name && <p className="text-sm text-slate-500">{row.source_name}</p>}
       </header>
 

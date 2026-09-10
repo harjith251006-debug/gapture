@@ -24,7 +24,7 @@ export function RegulatoryCard({ doc }: { doc: RegulatoryCardData }) {
           </span>
         )}
       </div>
-      <p className="text-sm leading-snug">{doc.title}</p>
+      <p className="text-sm leading-snug break-words">{doc.title}</p>
     </Link>
   );
 }

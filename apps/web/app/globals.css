@@ -4,6 +4,37 @@
   color-scheme: light dark;
 }
 
+html {
+  /* Respect the notch / rounded corners on modern phones. */
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left);
+}
+
 body {
-  min-height: 100vh;
+  min-height: 100dvh;
+  /* No page should ever scroll sideways on a phone. */
+  overflow-x: hidden;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/*
+ * iOS Safari zooms the viewport when focusing an input whose font is under
+ * 16px. Force 16px on form controls at phone widths; the visual `text-sm`
+ * still applies on larger screens where zoom-on-focus isn't a thing.
+ */
+@media (max-width: 640px) {
+  input,
+  select,
+  textarea {
+    font-size: 16px;
+  }
+}
+
+/* Comfortable minimum tap target for interactive elements on touch devices. */
+@media (pointer: coarse) {
+  button,
+  a[role="button"],
+  select,
+  [type="submit"] {
+    min-height: 44px;
+  }
 }

@@ -22,7 +22,7 @@ export function DetailedBrief({ detailed }: { detailed: string }) {
         <span className="text-slate-400">{open ? "Hide" : "Show"}</span>
       </button>
       {open && (
-        <div className="whitespace-pre-wrap rounded-md border border-slate-200 bg-slate-50 p-3 text-sm leading-relaxed text-slate-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300">
+        <div className="whitespace-pre-wrap break-words rounded-md border border-slate-200 bg-slate-50 p-3 text-sm leading-relaxed text-slate-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300">
           {detailed}
         </div>
       )}
