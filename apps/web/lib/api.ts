@@ -59,9 +59,9 @@ export function apiError(code: ApiErrorCode, message: string): NextResponse {
  */
 export function route(
   component: string,
-  handler: (req: Request, ctx: { params: Promise<Record<string, string>> }) => Promise<NextResponse>,
+  handler: (req: Request, ctx: { params: Promise<Record<string, string>> }) => Promise<Response>,
 ) {
-  return async (req: Request, ctx: { params: Promise<Record<string, string>> }): Promise<NextResponse> => {
+  return async (req: Request, ctx: { params: Promise<Record<string, string>> }): Promise<Response> => {
     try {
       return await handler(req, ctx);
     } catch (err) {

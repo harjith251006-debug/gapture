@@ -22,6 +22,8 @@ use nothing else.
 |---|---|---|
 | Embeddings | `text-embedding-3-small` @ **1024 dims** | Matches the Pinecone `gaptureai` index (1024, cosine). 3-small emits 1024 natively via the `dimensions` param. Changing this = full re-embed + new index. |
 | Chat (analysis + Q&A) | `gpt-5-mini` | Reasoning model: `max_completion_tokens`, no `temperature`. Supports `response_format: json_schema` (strict). Confirmed against the live `/v1/models` list 2026-09-11. Config: `OPENAI_ANALYSIS_MODEL`. |
+| Speech-to-text (Phase 14) | OpenAI `gpt-4o-mini-transcribe` | `language=en`. Config: `OPENAI_TRANSCRIBE_MODEL`. |
+| Text-to-speech (Phase 14) | ElevenLabs `eleven_flash_v2_5` → OpenAI `gpt-4o-mini-tts` → text-only | ElevenLabs is the architected primary (Tech Stack §29) but unusable on the current free plan (`402`); OpenAI TTS carries it today. MP3, non-streaming. |
 
 Both are called with raw `fetch` — no `openai` SDK — from server-only code
 (the worker, or a Next.js Route Handler). Keys are never in a Client

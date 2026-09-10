@@ -229,7 +229,7 @@ Per explicit user instruction, Phase 1 (Project Foundation) and Phase 3 (Auth) w
 * **OCR.space integration built and verified end-to-end** against the real API key: `OcrProvider` interface, `OcrSpaceProvider` implementation (§8.3's spec, exactly), `OCRService` retry wrapper, and a server-only `POST /api/ocr/extract` Route Handler — confirmed the frontend has no path to call OCR.space directly (unauthenticated request returns 401 before OCR.space is ever reached).
 * **Supabase Auth built and verified against the real project**: email sign-up (with the project's actual `mailer_autoconfirm: false` confirmed live, so the "check your email" branch is the one that fires), email sign-in, **Google OAuth** (confirmed already enabled on the real project — `"google": true` in its live Auth settings), session persistence via `@supabase/ssr`, proxy-based route protection (Next.js 16 renamed `middleware.ts` → `proxy.ts`; verified `/dashboard` and `/` correctly redirect unauthenticated requests with a real 307), sign-out.
 * **What is NOT verified**: an actual end-to-end human sign-up/sign-in/Google-consent click-through (no browser automation available in this environment) — only server-side redirect/auth-check behavior was verified via `curl` against the real Supabase Auth API. See the final report delivered to the user for the exact list of manual verification steps remaining.
-* **Real credential status** (discovered mid-task — see the note in the chat transcript about credentials appearing in `.env.example` and being moved to gitignored files): Supabase ✅ live, Google OAuth already configured; OpenAI ✅ live; OCR.space ✅ live, full request/response cycle confirmed; ElevenLabs ⚠️ key valid but scoped without `user_read`/`voices_read`/`models_read`, and the account's free tier blocks TTS synthesis against library voices via the API (`paid_plan_required`) — Phase 14 is blocked on either an upgraded plan or a key with broader permissions plus an owned voice ID; Pinecone ✅ live (key + index `gaptureai` @ 1024-dim cosine; embed→upsert→query round-trip confirmed in Phase 7).
+* **Real credential status** (discovered mid-task — see the note in the chat transcript about credentials appearing in `.env.example` and being moved to gitignored files): Supabase ✅ live, Google OAuth already configured; OpenAI ✅ live; OCR.space ✅ live, full request/response cycle confirmed; ElevenLabs ⚠️ key valid but the free tier blocks library-voice TTS via API (`402 paid_plan_required` — re-confirmed against the live API in Phase 14) — **Phase 14 shipped anyway** via an ElevenLabs → OpenAI-TTS → text-only fallback chain; ElevenLabs takes over automatically once the plan is upgraded; Pinecone ✅ live (key + index `gaptureai` @ 1024-dim cosine; embed→upsert→query round-trip confirmed in Phase 7).
 
 ---
 
@@ -284,7 +284,7 @@ None (this is the first phase). Requires human action: creating accounts on Supa
 - [x] Embedding model decided: **`text-embedding-3-small`** (task E17) — verified against OpenAI's current API docs, not guessed. **Dimension: 1024** (updated in Phase 7 — the provisioned Pinecone `gaptureai` index is 1024-dim; `text-embedding-3-small` emits 1024 natively via the `dimensions` param, so no model change. Original plan said 1536.)
 - [x] Git workflow decided: trunk-based, short feature branches, PR + CI gate before merge (task J27)
 - [x] Commit convention decided: Conventional Commits (task J28)
-- [x] OpenAI chat/completions model — **`gpt-5-mini`** (resolved Phase 9, 2026-09-11, against the live `/v1/models` list). Reasoning model: `max_completion_tokens`, no `temperature`; supports `response_format: json_schema` strict. Config: `OPENAI_ANALYSIS_MODEL`. Transcription model (Phase 14) still to confirm at that phase — the list shows `gpt-4o-transcribe` / `gpt-transcribe` available.
+- [x] OpenAI chat/completions model — **`gpt-5-mini`** (resolved Phase 9, 2026-09-11, against the live `/v1/models` list). Reasoning model: `max_completion_tokens`, no `temperature`; supports `response_format: json_schema` strict. Config: `OPENAI_ANALYSIS_MODEL`. Transcription model (Phase 14): **`gpt-4o-mini-transcribe`** — resolved Phase 14, round-trip verified. TTS: **ElevenLabs `eleven_flash_v2_5` primary, OpenAI `gpt-4o-mini-tts` fallback** (ElevenLabs 402 on the free plan).
 - [ ] Supabase project created — **blocked: Supabase MCP connector not authorized for this session; requires either connecting it via claude.ai connector settings, or manual creation via supabase.com**
 - [x] Pinecone account/index created — index `gaptureai`, 1024-dim, cosine, host in `PINECONE_INDEX_HOST`
 - [x] OpenAI API key obtained — live, embeddings verified
@@ -1573,15 +1573,25 @@ Phase 13 (text-based Contextual Q&A working end-to-end).
 5. Implement graceful degradation: if ElevenLabs fails, fall back to text-only display of the answer rather than failing the whole interaction (HLSA §21, BRD RISK-004).
 6. **Resolve the TBD items HLSA §13 explicitly leaves open**: specific ElevenLabs voice/model selection, target language(s), audio format, and streaming method — these are Architecture Decisions to make in this phase, not before, since they require hands-on testing with the real API.
 
-### Files / Modules
+### Files / Modules — AS BUILT (2026-09-11)
 ```text
-apps/web/components/VoiceButton.tsx
-apps/web/app/api/voice/transcribe/route.ts
-apps/web/app/api/voice/speak/route.ts
+apps/web/lib/voice.ts              # transcribeAudio() -> OpenAI STT;
+                                   #   synthesizeSpeech() -> ElevenLabs, then
+                                   #   OpenAI TTS, then null (caller -> text)
+apps/web/app/api/voice/transcribe/route.ts   # POST multipart audio -> {text}
+apps/web/app/api/voice/speak/route.ts        # POST {text} -> audio/mpeg
+                                   #   (X-TTS-Provider header) or 502 -> text
+apps/web/components/VoiceButton.tsx           # MediaRecorder capture ->
+                                   #   /api/voice/transcribe -> onTranscript()
+apps/web/components/QuestionInterface.tsx     # + VoiceButton; a spoken
+                                   #   question runs the SAME ask() flow then
+                                   #   plays the answer (best-effort <audio>)
+apps/web/lib/api.ts                # route() return type widened to Response
+                                   #   (so /speak can return raw audio bytes)
 ```
 
 ### Dependencies
-`openai` SDK (STT endpoint, already installed), an ElevenLabs SDK or direct HTTP client.
+None — raw `fetch` for OpenAI STT/TTS and ElevenLabs. No SDK.
 
 ### Database Impact
 None beyond what Phase 13 already persists (the underlying Q&A turn) — voice is not stored as a separate artifact (no audio blob persistence is defined by any source document; recording is transient, matching HLSA's data-lifecycle table which lists no audio storage stage).
@@ -1607,12 +1617,24 @@ BRD RISK-004 (API availability) applies directly to ElevenLabs; mitigated by the
 Phase 13.
 
 ### Definition of Done
-- [ ] Voice question → transcription → grounded answer → spoken response works end-to-end
-- [ ] ElevenLabs failure correctly falls back to text-only, verified by simulated failure
-- [ ] Voice/model/language/audio-format decisions recorded (resolving HLSA §13's TBDs)
+- [x] Voice question → transcription → grounded answer → spoken response, end-to-end — verified against a running `next dev` + live APIs: a synthesised spoken question (`"What action does this circular require…"`) → `POST /api/voice/transcribe` returned the exact transcript → fed to `/api/qa` → `answered:true` grounded answer → `POST /api/voice/speak` returned a valid 553 KB `audio/mpeg`. Both voice routes `401` without a session; empty audio → `400`; empty `text` → `400`.
+- [x] ElevenLabs failure falls back — verified **in real operation, not simulated**: the provisioned ElevenLabs key genuinely returns `402 paid_plan_required` (free tier can't use library voices via API — confirmed against the live API), and `/api/voice/speak` transparently fell through to OpenAI TTS (`X-TTS-Provider: openai`). If OpenAI TTS were also down, `synthesizeSpeech` returns `null` → the route returns `502` → `QuestionInterface.playAnswer` silently no-ops and the text answer (always already rendered) stands. The text answer is never gated on TTS.
+- [x] Decisions recorded (resolving HLSA §13's TBDs) — see below.
+
+### Architecture decisions made in this phase
+- **STT: OpenAI `gpt-4o-mini-transcribe`** (`OPENAI_TRANSCRIBE_MODEL`), `language=en`. Verified: round-tripped synthesised audio back to the exact text.
+- **TTS: ElevenLabs primary, OpenAI TTS fallback, text-only final** — a three-tier degradation. ElevenLabs (`eleven_flash_v2_5`, voice `21m00Tcm4TlvDq8ikWAM`) is the architected choice (Tech Stack §29) and is tried first; it is currently unusable on the free plan (`402`), so OpenAI TTS (`gpt-4o-mini-tts`, voice `alloy`) carries the feature today. **This is a new-requirement-vs-architecture conflict (SKILL.md Final Rule) — a standalone `adr/ADR-012-tts-provider-fallback.md` is owed as part of the Phase 1/22 ADR backlog; the rationale is captured here in the meantime.** Nothing new is introduced vendor-wise — OpenAI is already the approved processor for STT/embeddings/LLM.
+- **Language: English only** for MVP (app + regulatory corpus are English).
+- **Audio format: MP3**, non-streaming — answers are short, `<audio>` plays the whole blob. No SSE/chunked streaming for MVP.
+- **No audio persistence** — recording is transient in the browser; only the resulting Q&A text turn is stored (Phase 13's `contextual_interactions`), matching HLSA's data-lifecycle table.
+
+### Open / carried forward
+- Spoken response uses OpenAI TTS until the ElevenLabs plan is upgraded; when it is, set `ELEVENLABS_API_KEY` to a key with TTS permission and it takes over automatically (no code change).
+- `VoiceButton` couldn't be exercised with a real microphone by this agent — the two API routes and the full synth→transcribe→qa→speak chain were verified by script; `MediaRecorder` capture itself is standard browser API and is guarded for unsupported browsers / denied permission.
+- `adr/ADR-012-tts-provider-fallback.md` to be written with the rest of the ADR backlog (Phase 1 task 9 / Phase 22).
 
 ### Estimated Effort
-Hours: 16–26 · Complexity: Medium
+Hours: 16–26 · Complexity: Medium — **actual: ~1 session.** Two thin routes + a capture component; the fallback chain was the substance.
 
 ---
 
