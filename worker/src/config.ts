@@ -5,6 +5,13 @@ const schema = z.object({
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(1),
   WORKER_POLL_INTERVAL_MS: z.coerce.number().int().positive().default(300_000),
   SOURCE_FETCH_TIMEOUT_MS: z.coerce.number().int().positive().default(30_000),
+  OCR_SPACE_API_KEY: z.string().min(1),
+  OCR_REQUEST_TIMEOUT_MS: z.coerce.number().int().positive().default(30_000),
+  DOCUMENT_ENCRYPTION_KEY: z.string().min(1),
+  /** Max original-file size the worker will retrieve+store, in bytes. */
+  MAX_DOCUMENT_BYTES: z.coerce.number().int().positive().default(25 * 1024 * 1024),
+  /** How many DETECTED-backlog documents to process per cycle (bounds OCR.space usage). */
+  INGESTION_BATCH_SIZE: z.coerce.number().int().positive().default(5),
   NODE_ENV: z.string().default("development"),
 });
 

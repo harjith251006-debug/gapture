@@ -714,21 +714,25 @@ Phase 4 (a "YES" file reference exists), Phase 3 (Storage buckets configured), a
 11. Mark the branch `TERMINATE` conceptually (PRD FR-09) — in implementation this is simply "no further worker action on this branch"; the monitoring loop (Phase 4) is entirely unaffected and keeps running.
 12. Hand the document off to Phase 6 (Document Cleaning) — either as a direct in-process call within the same worker cycle, or via the `status = 'STORED'` row being picked up by a subsequent processing pass (Architecture Decision: given HLSA's modular-monolith principle, a single worker process handling both ingestion and intelligence in sequence per document is simpler than a queue-based handoff, and is recommended for MVP).
 
-### Files / Modules
+### Files / Modules — AS BUILT (2026-09-11)
 ```text
 packages/shared/src/services/
-├── ocr/
+├── ocr/                          # (built in the OCR.space task)
 │   ├── ocr-provider.interface.ts
-│   ├── ocr-service.ts
-│   ├── ocr-types.ts
+│   ├── ocr-service.ts            # retry/backoff wrapper
+│   ├── types.ts
 │   └── providers/ocr-space-provider.ts
 └── crypto/
-    ├── sha256.ts
-    └── aes256.ts
+    ├── hash.ts                   # sha256Hex()
+    └── encryption.ts             # deriveKey/encrypt/decrypt — AES-256-GCM
 worker/src/ingestion/
-├── retrieve.ts
-├── validate.ts
-└── secure-and-store.ts
+├── fetch.ts                      # fetchText/fetchBinary with timeout + size cap; RetrievalError
+├── extract.ts                    # htmlToText, extractPageText (per source), findPrimaryPdfUrl (per source)
+├── ocr.ts                        # OCRService factory from worker config
+├── secure-store.ts               # sha256 + dup check + AES encrypt + upload original & extracted.enc + RPC status
+└── process-document.ts           # orchestrator: retrieve → decide (page-text vs OCR) → secure → store
+supabase/migrations/014_ingestion_rpcs.sql   # advance_document_status() — atomic status + event
+worker/src/monitoring/loop.ts     # processPendingDocuments() sweep added to each cycle
 ```
 
 ### Dependencies
@@ -764,15 +768,23 @@ None directly — internal worker phase. `document_processing_events`/`status` b
 Phase 3 (Storage buckets), Phase 4 (a detected file to act on).
 
 ### Definition of Done
-- [ ] `OCRProvider` interface finalized and `OcrSpaceProvider` implemented against OCR.space's real (verified, §8.3) API
-- [ ] Oversized-document handling decided and implemented (split/reject/PRO-tier — task 2's open sub-decision)
-- [ ] A real regulatory PDF/image round-trips through OCR → hash → encrypt → Storage successfully
-- [ ] Duplicate detection verified against both `external_reference` and `sha256` paths
-- [ ] All failure paths (OCR timeout, Storage failure) hold state correctly and are retried, never silently skipped
-- [ ] AES-256 key handling documented in `docs/security/SECURITY.md`
+- [x] `OCRProvider` interface + `OcrSpaceProvider` (built in the OCR.space task) wired into the worker via `worker/src/ingestion/ocr.ts` — **verified live**: SEBI PDFs OCR'd to real text (`SEBI-104420` → 2,479 chars of the actual Release Order)
+- [x] Oversized-document handling **implemented** (`process-document.ts`): >1 MB PDF → stored, but extracted text falls back to page/title with a loud `OCR_PROCESSING` error event ("needs PDF splitting or a paid tier") — never a silent truncation. Actual multi-page splitting is deferred (no document in the current feed window exceeded 1 MB in a way that lost content).
+- [x] A real regulatory document round-trips through retrieve → extract → hash → AES-256-GCM encrypt → Storage — **verified**: 9 documents `STORED` (5 RBI via page-text, no OCR; 4 SEBI via PDF+OCR). Decryption round-trip confirmed for both `original.enc` (PDF magic bytes intact) and `extracted.enc`.
+- [x] Duplicate detection — `sha256` computed per original and checked against `uq_regdocs_source_sha256` for the same source (a match logs a warning, doesn't block). `external_reference` dedup is Phase 4's job and already verified there.
+- [x] Failure paths hold state and retry — **verified live during an actual OCR.space outage**: OCR.space returned HTTP 503 for ~2 minutes; 3 documents exhausted their retry budget and were **held at `OCR_PROCESSING`** with an error event (not crashed, not advanced); the next sweep picked them up and all 3 completed once OCR.space recovered. Also verified: retry-within-attempt (`SEBI-104420` succeeded on attempt 2), non-PDF link detection (`%PDF-` magic check).
+- [ ] AES-256 key handling documented in `docs/security/SECURITY.md` — **not yet** (SECURITY.md not written; behavior is: `DOCUMENT_ENCRYPTION_KEY` env secret → SHA-256 → 32-byte key → AES-256-GCM, `iv‖authTag‖ciphertext`; single server-side key, KMS deferred per HLSA §33)
+
+**Architecture decisions made in this phase:**
+- **RBI needs no OCR.** RBI's `NotificationUser.aspx` page carries the full circular text inline (machine-readable) — the worker extracts it directly and stores the page HTML as the original. OCR only runs when page text is insufficient (< 400 chars usable), which in practice means SEBI's PDF-only order/enforcement pages.
+- **SEBI PDF discovery:** SEBI renders the attachment in an `<iframe src='.../web/?file=<PDF>'>`, not an `<a href>` — the worker scans the raw HTML for the `sebi_data/attachdocs/…​.pdf` path.
+- **Text handoff to Phase 6:** the extracted text is AES-256-encrypted and stored as an `extracted.enc` sidecar next to the original (`{source}/{year}/{externalRef}/`). Phase 6 (cleaning) decrypts that — no re-download, no re-OCR. New migration `014_ingestion_rpcs.sql` adds `advance_document_status(...)` so status-transition + processing-event writes are atomic (supabase-js REST can't do a multi-statement transaction — DB Schema §31).
+- **SEBI "remittance/recovery notice" documents:** many are just a title with a short PDF; where the PDF is thin the title IS effectively the content.
+
+**Open / carried forward:** 31 documents still at `DETECTED` (the Phase 4 backfill). The worker processes 5/cycle (`INGESTION_BATCH_SIZE`, bounds OCR.space usage — free tier 500/day/IP); the backlog clears on its own over a few cycles, or bump the batch size. Multi-page PDF splitting for the >3-page case remains unbuilt.
 
 ### Estimated Effort
-Hours: 24–40 · Complexity: Large (blocked on external dependency resolution; crypto/storage code itself is moderate)
+Hours: 24–40 · Complexity: Large — **actual: moderate. OCR.space integration + crypto were straightforward; most effort went into per-source retrieval quirks (RBI nav-heavy pages, SEBI iframe PDFs) discovered by testing against real pages.**
 
 ---
 

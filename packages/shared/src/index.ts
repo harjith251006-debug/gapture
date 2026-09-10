@@ -5,3 +5,5 @@ export * from "./services/ocr/providers/ocr-space-provider";
 export * from "./supabase/admin-client";
 export * from "./services/storage/storage-paths";
 export * from "./services/storage/signed-url";
+export * from "./services/crypto/hash";
+export * from "./services/crypto/encryption";

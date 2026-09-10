@@ -8,6 +8,10 @@ import { fetchFeed, SourceUnavailableError } from "./rss-processor.js";
 import { retrieveViaWebScrape } from "./web-retrieval.js";
 import { runWatchdog } from "./watchdog.js";
 import { detectNewFiles } from "./new-file-detector.js";
+import { processDocument } from "../ingestion/process-document.js";
+
+/** Non-terminal statuses whose documents still need pipeline work. */
+const PENDING_STATUSES = ["DETECTED", "RETRIEVED", "OCR_PROCESSING", "SECURED"];
 
 const ADAPTERS: Record<string, SourceAdapter> = {
   RBI: rbiAdapter,
@@ -83,9 +87,9 @@ async function pollSource(
         externalReference: doc.externalReference,
         title: doc.title,
       });
-      // Phase 5 handoff point: processDocument(doc.id) will be invoked here
-      // once the ingestion pipeline exists. For now the row sits at DETECTED.
     }
+    // Ingestion (Phase 5) runs as a single bounded sweep after all sources
+    // are polled — see processPendingDocuments in runCycle.
   } catch (err) {
     if (err instanceof SourceUnavailableError) {
       // HLSA §21: source unreachable → log, do not crash, retry next cycle.
@@ -132,7 +136,48 @@ export async function runCycle(
     sources.map((s) => pollSource(supabase, log, s as RegulatorySourceRow, config)),
   );
 
+  await processPendingDocuments(supabase, log, config);
+
   log.info("poll cycle finished", { durationMs: Date.now() - startedAt });
+}
+
+/**
+ * Ingestion sweep (Phase 5): take up to INGESTION_BATCH_SIZE documents that
+ * aren't yet STORED and run each through retrieve → extract → secure → store,
+ * oldest first. Sequential, to keep OCR.space request volume bounded (free
+ * tier: 500/day/IP). A per-document failure holds that document for a later
+ * retry and does not stop the sweep.
+ */
+export async function processPendingDocuments(
+  supabase: WorkerSupabaseClient,
+  log: Logger,
+  config: Config,
+): Promise<void> {
+  const { data: pending, error } = await supabase
+    .from("regulatory_documents")
+    .select("id")
+    .in("status", PENDING_STATUSES)
+    .order("detected_at", { ascending: true })
+    .limit(config.INGESTION_BATCH_SIZE);
+
+  if (error) {
+    log.error("failed to load pending documents for ingestion", { error: error.message });
+    return;
+  }
+  if (!pending || pending.length === 0) {
+    log.debug("no documents pending ingestion");
+    return;
+  }
+
+  log.info("ingestion sweep starting", { count: pending.length });
+  let stored = 0;
+  let held = 0;
+  for (const row of pending) {
+    const result = await processDocument(supabase, log, config, row.id);
+    if (result.outcome === "stored") stored++;
+    else if (result.outcome === "held") held++;
+  }
+  log.info("ingestion sweep finished", { attempted: pending.length, stored, held });
 }
 
 /**
