@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { SignOutButton } from "@/components/SignOutButton";
@@ -21,7 +22,17 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   return (
     <div className="min-h-screen">
       <header className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 px-6 py-4">
-        <span className="font-semibold">Gapture</span>
+        <div className="flex items-center gap-6">
+          <span className="font-semibold">Gapture</span>
+          <nav className="flex items-center gap-4 text-sm text-slate-500">
+            <Link href="/dashboard" className="hover:text-slate-900 dark:hover:text-slate-100">
+              Dashboard
+            </Link>
+            <Link href="/policies" className="hover:text-slate-900 dark:hover:text-slate-100">
+              Policies
+            </Link>
+          </nav>
+        </div>
         <div className="flex items-center gap-4 text-sm">
           <span className="text-slate-500">{user.email}</span>
           <SignOutButton />

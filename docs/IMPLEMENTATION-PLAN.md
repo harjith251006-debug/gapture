@@ -990,12 +990,33 @@ Phase 3 (policy Storage bucket + org-scoped RLS), Phases 6–7 (cleaning/chunkin
 4. Implement policy listing (`GET /api/policies`) — org-scoped, per Phase 2's RLS.
 5. **Explicitly do not build**: policy versioning UI, a policy-categorization taxonomy, or a policy approval workflow. Per DB Schema §17.1 and PRD FR-12/BRD §28, these are undefined by the source documents. Where a policy is "replaced," the Architecture Decision already made in the DB Schema doc applies: upload creates a new `compliance_policies` row; the previous row and its chunks are left in place, not mutated or deleted.
 
-### Files / Modules
+### Files / Modules — AS BUILT (2026-09-11)
 ```text
-apps/web/app/api/policies/
-├── route.ts            # POST (upload), GET (list)
-worker/src/intelligence/policy-ingest.ts   # or reuse the same functions as regulatory ingestion, parameterized
+apps/web/app/api/policies/route.ts   # POST upload (auth, org-scoped): validate
+                                     #   type/size -> SHA-256 -> dedupe on
+                                     #   (org, sha256) -> AES-encrypt -> upload
+                                     #   {org}/{policy}/original.enc -> insert
+                                     #   compliance_policies (UPLOADED). GET list.
+apps/web/app/(app)/policies/page.tsx # minimal upload form + status list
+apps/web/components/PolicyUpload.tsx  #   (full UX is Phase 12)
+apps/web/proxy.ts                    # + /policies protected prefix
+worker/src/intelligence/policy-pipeline.ts  # processPolicyDocument(): one policy
+                                     #   UPLOADED -> CLEANING -> INDEXING ->
+                                     #   COMPLETED. REUSES getOcrService (P5),
+                                     #   cleanDocumentText + chunkText (P6),
+                                     #   getEmbeddingClients (P7). Never throws.
+worker/src/intelligence/clients.ts   # getEmbeddingClients() extracted from
+                                     #   embed-and-index.ts, now shared by both
+                                     #   the regulatory and policy sweeps
+worker/src/monitoring/loop.ts        # + processPendingPolicies() sweep,
+                                     #   POLICY_BATCH_SIZE (default 3)
+worker/src/config.ts                 # + PINECONE_NAMESPACE_POLICY, POLICY_BATCH_SIZE
 ```
+
+No new migration, no new npm package. `compliance_policies` / `policy_chunks`
+(migration 006) and the storage bucket + RLS (migrations 013 / 010) already
+exist. Policy status transitions are plain `UPDATE`s (there is no
+`policy_processing_events` table by design — DB Schema §17.1).
 
 ### Dependencies
 Same as Phases 6–7 — no new external service.
@@ -1025,13 +1046,25 @@ Same batching/indexing guarantees as Phases 6–7, since this phase reuses that 
 Phase 3 (Storage/RLS), Phase 6 (cleaning), Phase 7 (embedding/Pinecone pattern to reuse).
 
 ### Definition of Done
-- [ ] A real policy document uploads, processes, and becomes retrievable as Pinecone context
-- [ ] Duplicate-within-org detection verified
-- [ ] Cross-org isolation verified across API, Storage, and Pinecone metadata
-- [ ] No policy-versioning/categorization feature was built beyond what's specified (explicit non-goal confirmed)
+- [x] A real policy document uploads, processes, and becomes retrievable as Pinecone context — verified end-to-end against live Supabase + OpenAI + Pinecone: two policies (one per test org) went `UPLOADED → COMPLETED`, chunks `EMBEDDED` with `pinecone_vector_id = {policy_id}:{chunk_index}`, `policy` namespace populated, and a semantic query (`"KYC verification requirements"`) returned the right chunk (round-tripped `pinecone_vector_id → policy_chunks → compliance_policies`).
+- [x] Duplicate-within-org detection verified — a second insert with the same `(organization_id, sha256)` was rejected with `23505` (`uq_policies_org_sha256`); the route returns `409` before that.
+- [x] Cross-org isolation verified across Pinecone metadata — `query(filter: {organization_id: A})` returned only org A's vectors, `{organization_id: B}` only org B's. API/Storage isolation rests on the Phase 3-verified RLS (`compliance_policies_org` `FOR ALL`, `compliance_policies_bucket_*` path-prefix policies) — the route only ever uses the session client, so a caller physically cannot read or write another org's row or object.
+- [x] No policy-versioning/categorization feature was built — upload creates a new row; nothing mutates or deletes a prior policy or its chunks. No `policy_versions` table, no taxonomy, no approval workflow.
+
+### Architecture decisions made in this phase
+- **Extraction happens in the worker, not the upload route.** The route only stores the AES-encrypted original and inserts an `UPLOADED` row (fast, no OCR on the request path — HLSA §28). The worker's policy sweep decrypts, OCRs (PDF/image) or reads UTF-8 (text/markdown), then reuses `cleanDocumentText` / `chunkText` / the embedding+Pinecone clients unchanged.
+- **Genuine reuse, separate orchestration.** `clean.ts`, `chunk.ts`, `getOcrService`, `EmbeddingService`, `PineconeClient` are all shared with the regulatory pipeline (the `getEmbeddingClients` factory was extracted from `embed-and-index.ts` for this). Only `policy-pipeline.ts` is new, because policies use different tables, a different status enum (no SECURED/STORED, no processing-events), and their own Pinecone namespace with `{organization_id, policy_id, chunk_index}` metadata.
+- **Policies are AES-encrypted at rest too** (`original.enc`), matching the regulatory pipeline and DB Schema §38's "most sensitive data" call-out — on top of the already-private bucket.
+- **Accepted types: PDF, plain text, Markdown, PNG, JPEG.** DOCX is rejected with a clear message (no parser; out of MVP scope). PDFs/images over OCR.space's 1 MB free-tier limit upload fine but surface a warning and will hold at `CLEANING` until a paid OCR tier exists — same constraint as Phase 5.
+- **A minimal `/policies` page was built** (upload form + status list) so the pipeline is exercisable from the browser; the full upload UX (progress, per-policy detail, delete) is Phase 12.
+
+### Open / carried forward
+- Two live authenticated sessions weren't scripted, so cross-org RLS was verified by policy inspection + Phase 3's prior tests, not a fresh dual-session run. A Phase 19 integration test should cover it explicitly.
+- A policy that fails OCR (oversized PDF) holds at `CLEANING` forever with only a log line — no `policy_processing_events` table to surface it in-app. Phase 12/19 should show policy status + failure reason in the UI.
+- Phase 9 (NLP Engine) queries this `policy` namespace, filtered by `organization_id`, to build per-org comparison context.
 
 ### Estimated Effort
-Hours: 10–18 · Complexity: Small–Medium (mostly reuse of Phases 6–7)
+Hours: 10–18 · Complexity: Small–Medium — **actual: ~1 session.** Mostly reuse, as predicted; the new surface is one worker file + one route.
 
 ---
 

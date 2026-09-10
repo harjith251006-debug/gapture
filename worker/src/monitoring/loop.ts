@@ -11,6 +11,7 @@ import { detectNewFiles } from "./new-file-detector.js";
 import { processDocument } from "../ingestion/process-document.js";
 import { cleanAndChunkDocument } from "../intelligence/process-cleaning.js";
 import { embedAndIndexDocument } from "../intelligence/embed-and-index.js";
+import { processPolicyDocument } from "../intelligence/policy-pipeline.js";
 
 /** Non-terminal statuses whose documents still need ingestion (Phase 5) work. */
 const PENDING_STATUSES = ["DETECTED", "RETRIEVED", "OCR_PROCESSING", "SECURED"];
@@ -18,6 +19,8 @@ const PENDING_STATUSES = ["DETECTED", "RETRIEVED", "OCR_PROCESSING", "SECURED"];
 const CLEANABLE_STATUSES = ["STORED", "CLEANING"];
 /** Statuses whose documents still need embedding + Pinecone indexing (Phase 7). */
 const INDEXABLE_STATUSES = ["INDEXING"];
+/** Compliance-policy statuses that still need processing (Phase 8). */
+const PROCESSABLE_POLICY_STATUSES = ["UPLOADED", "CLEANING", "INDEXING"];
 
 const ADAPTERS: Record<string, SourceAdapter> = {
   RBI: rbiAdapter,
@@ -145,6 +148,7 @@ export async function runCycle(
   await processPendingDocuments(supabase, log, config);
   await processCleanableDocuments(supabase, log, config);
   await processIndexableDocuments(supabase, log, config);
+  await processPendingPolicies(supabase, log, config);
 
   log.info("poll cycle finished", { durationMs: Date.now() - startedAt });
 }
@@ -265,6 +269,46 @@ export async function processIndexableDocuments(
     else if (result.outcome === "held") held++;
   }
   log.info("embedding sweep finished", { attempted: pending.length, indexed, held });
+}
+
+/**
+ * Policy sweep (Phase 8): take up to POLICY_BATCH_SIZE compliance policies
+ * that aren't COMPLETED and run each end-to-end (extract -> clean -> chunk ->
+ * embed -> Pinecone `policy` namespace -> COMPLETED), oldest first. Bounded
+ * because each policy may make an OCR call plus an embed + upsert. A
+ * per-policy failure holds that policy for a later retry and does not stop
+ * the sweep.
+ */
+export async function processPendingPolicies(
+  supabase: WorkerSupabaseClient,
+  log: Logger,
+  config: Config,
+): Promise<void> {
+  const { data: pending, error } = await supabase
+    .from("compliance_policies")
+    .select("id")
+    .in("status", PROCESSABLE_POLICY_STATUSES)
+    .order("created_at", { ascending: true })
+    .limit(config.POLICY_BATCH_SIZE);
+
+  if (error) {
+    log.error("failed to load policies for processing", { error: error.message });
+    return;
+  }
+  if (!pending || pending.length === 0) {
+    log.debug("no policies pending processing");
+    return;
+  }
+
+  log.info("policy sweep starting", { count: pending.length });
+  let completed = 0;
+  let held = 0;
+  for (const row of pending) {
+    const result = await processPolicyDocument(supabase, log, config, row.id);
+    if (result.outcome === "completed") completed++;
+    else if (result.outcome === "held") held++;
+  }
+  log.info("policy sweep finished", { attempted: pending.length, completed, held });
 }
 
 /**

@@ -18,6 +18,8 @@ const schema = z.object({
   PINECONE_REQUEST_TIMEOUT_MS: z.coerce.number().int().positive().default(30_000),
   /** Pinecone namespace for regulatory-document vectors (policies use their own). */
   PINECONE_NAMESPACE_REGULATORY: z.string().default("regulatory"),
+  /** Pinecone namespace for company compliance-policy vectors. */
+  PINECONE_NAMESPACE_POLICY: z.string().default("policy"),
   /** Max original-file size the worker will retrieve+store, in bytes. */
   MAX_DOCUMENT_BYTES: z.coerce.number().int().positive().default(25 * 1024 * 1024),
   /** How many DETECTED-backlog documents to process per cycle (bounds OCR.space usage). */
@@ -26,6 +28,8 @@ const schema = z.object({
   CLEANING_BATCH_SIZE: z.coerce.number().int().positive().default(10),
   /** How many INDEXING documents to embed + upsert to Pinecone per cycle. */
   EMBEDDING_BATCH_SIZE: z.coerce.number().int().positive().default(5),
+  /** How many uploaded/in-flight compliance policies to process per cycle. */
+  POLICY_BATCH_SIZE: z.coerce.number().int().positive().default(3),
   NODE_ENV: z.string().default("development"),
 });
 

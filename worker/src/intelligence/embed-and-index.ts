@@ -1,14 +1,8 @@
-import {
-  EmbeddingError,
-  EmbeddingService,
-  OpenAIEmbeddingProvider,
-  PineconeClient,
-  PineconeError,
-  type PineconeVector,
-} from "@gapture/shared";
+import { EmbeddingError, PineconeError, type PineconeVector } from "@gapture/shared";
 import type { WorkerSupabaseClient } from "../supabase.js";
 import type { Logger } from "../logger.js";
 import type { Config } from "../config.js";
+import { getEmbeddingClients } from "./clients.js";
 
 interface DocRow {
   id: string;
@@ -26,30 +20,6 @@ export interface EmbedResult {
   chunkCount?: number;
   vectorsUpserted?: number;
   reason?: string;
-}
-
-const clientCache = new WeakMap<Config, { embeddings: EmbeddingService; pinecone: PineconeClient }>();
-
-function getClients(config: Config): { embeddings: EmbeddingService; pinecone: PineconeClient } {
-  const cached = clientCache.get(config);
-  if (cached) return cached;
-  const clients = {
-    embeddings: new EmbeddingService(
-      new OpenAIEmbeddingProvider({
-        apiKey: config.OPENAI_API_KEY,
-        model: config.OPENAI_EMBEDDING_MODEL,
-        dimensions: config.OPENAI_EMBEDDING_DIMENSIONS,
-        timeoutMs: config.OPENAI_REQUEST_TIMEOUT_MS,
-      }),
-    ),
-    pinecone: new PineconeClient({
-      apiKey: config.PINECONE_API_KEY,
-      indexHost: config.PINECONE_INDEX_HOST,
-      timeoutMs: config.PINECONE_REQUEST_TIMEOUT_MS,
-    }),
-  };
-  clientCache.set(config, clients);
-  return clients;
 }
 
 /** Stable, deterministic vector id so a re-run upserts the same Pinecone row. */
@@ -129,7 +99,7 @@ export async function embedAndIndexDocument(
   }
 
   try {
-    const { embeddings, pinecone } = getClients(config);
+    const { embeddings, pinecone } = getEmbeddingClients(config);
 
     const vectors = await embeddings.embedTexts(chunks.map((c) => c.content));
     if (vectors.length !== chunks.length) {
