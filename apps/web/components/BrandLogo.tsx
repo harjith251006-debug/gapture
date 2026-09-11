@@ -40,7 +40,7 @@ export function BrandLogo({
         {tone === "onDark" ? (
           <span className="text-teal">AI</span>
         ) : (
-          <span className="bg-gradient-to-r from-teal to-[#0b6bff] bg-clip-text text-transparent">AI</span>
+          <span className="bg-gradient-to-r from-brand to-teal bg-clip-text text-transparent">AI</span>
         )}
         <span className="ml-0.5 text-teal" aria-hidden>
           ✦

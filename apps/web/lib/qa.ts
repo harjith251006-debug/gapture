@@ -35,7 +35,7 @@ export function createContextualQaService(): ContextualQaService {
     model: process.env.OPENAI_ANALYSIS_MODEL ?? "gpt-5-mini",
     regulatoryNamespace: process.env.PINECONE_NAMESPACE_REGULATORY ?? "regulatory",
     policyNamespace: process.env.PINECONE_NAMESPACE_POLICY ?? "policy",
-    topK: Number(process.env.QA_TOP_K) || 6,
+    topK: Number(process.env.QA_TOP_K) || 8,
     minScore: process.env.QA_MIN_SCORE ? Number(process.env.QA_MIN_SCORE) : undefined,
   });
 }

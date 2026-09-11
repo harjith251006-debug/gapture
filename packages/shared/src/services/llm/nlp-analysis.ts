@@ -50,7 +50,10 @@ export class OpenAIAnalysisProvider implements AnalysisProvider {
     if (!options.apiKey) throw new Error("OpenAIAnalysisProvider requires an apiKey");
     this.apiKey = options.apiKey;
     this.model = options.model ?? "gpt-5-mini";
-    this.maxCompletionTokens = options.maxCompletionTokens ?? 4000;
+    // The structured multi-section reasoning (Requirement/Compliance/Gap/
+    // Update/Priority/Evidence) runs longer than a plain summary, and gpt-5's
+    // reasoning tokens count against this same budget.
+    this.maxCompletionTokens = options.maxCompletionTokens ?? 6000;
     this.timeoutMs = options.timeoutMs ?? 60_000;
   }
 

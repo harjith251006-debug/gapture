@@ -15,8 +15,8 @@ const schema = z.object({
   OPENAI_REQUEST_TIMEOUT_MS: z.coerce.number().int().positive().default(30_000),
   /** Chat model for regulatory-vs-policy analysis (Phase 9). gpt-5 family. */
   OPENAI_ANALYSIS_MODEL: z.string().default("gpt-5-mini"),
-  OPENAI_ANALYSIS_MAX_TOKENS: z.coerce.number().int().positive().default(4000),
-  OPENAI_ANALYSIS_TIMEOUT_MS: z.coerce.number().int().positive().default(60_000),
+  OPENAI_ANALYSIS_MAX_TOKENS: z.coerce.number().int().positive().default(6000),
+  OPENAI_ANALYSIS_TIMEOUT_MS: z.coerce.number().int().positive().default(120_000),
   PINECONE_API_KEY: z.string().min(1),
   PINECONE_INDEX_HOST: z.string().url(),
   PINECONE_REQUEST_TIMEOUT_MS: z.coerce.number().int().positive().default(30_000),

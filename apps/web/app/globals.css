@@ -1,51 +1,63 @@
 @import "tailwindcss";
 
 /*
- * Gapture AI design system (DESIGN.md §5–§7, §36). Deep navy + teal/green +
- * blue + white, Inter, rounded enterprise cards, restrained shadows,
- * semantic status colours. Light-first with a tuned dark variant.
+ * FT-07 CaptureAI design system (FT-07_CaptureAI_UI_UX_Design_Specification.md
+ * §2.2–2.3). White-first canvas, deep navy typography, green→teal gradient
+ * brand accents, restrained rounded cards. Light-first with a tuned dark
+ * variant.
  */
 @theme {
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
     "Segoe UI", sans-serif;
 
-  /* Brand */
-  --color-brand: #0b6bff; /* primary actions / links */
-  --color-brand-dark: #0a54c7;
-  --color-teal: #00c49a; /* brand teal/green */
-  --color-ai: #14b8a6; /* AI accents */
-  --color-navy: #0b1f4d; /* headings */
+  /* Brand — FT-07 §2.2 */
+  --color-brand: #0baa71; /* Brand Green — primary actions / active states */
+  --color-brand-dark: #098f5f;
+  --color-teal: #00beb4; /* Brand Teal — gradient endpoint / AI accents */
+  --color-ai: #00beb4;
+  --color-navy: #0a1f3e; /* Brand Navy — headings, primary text */
+  --color-slate: #5b697d; /* secondary text / metadata */
+  --color-green-tint: #effaf5; /* selected nav, success surfaces */
 
   /* Semantic status */
-  --color-success: #10b981;
-  --color-warning: #f59e0b;
-  --color-danger: #ef4444;
-  --color-info: #3b82f6;
+  --color-success: #0baa71;
+  --color-warning: #f4c83b;
+  --color-danger: #f04444;
+  --color-info: #00beb4;
 
   /* Surfaces */
-  --color-canvas: #f8fafc;
+  --color-canvas: #fafbfa;
   --color-surface: #ffffff;
 
-  --radius-btn: 0.5rem; /* 8px */
-  --radius-card: 0.75rem; /* 12px */
+  --radius-btn: 0.625rem; /* 10px — inputs/buttons */
+  --radius-card: 1rem; /* 16px */
 }
 
 :root {
   color-scheme: light dark;
-  --canvas: #f8fafc;
+  --canvas: #fafbfa;
   --surface: #ffffff;
-  --border: #e2e8f0;
-  --text: #0b1f4d;
-  --text-muted: #64748b;
+  --border: #dee6eb;
+  --text: #0a1f3e;
+  --text-muted: #5b697d;
+
+  /* Named tokens (design spec §28) */
+  --radius-sm: 0.5rem; /* 8px */
+  --radius-md: 0.75rem; /* 12px */
+  --radius-lg: 1rem; /* 16px */
+  --radius-xl: 1.25rem; /* 20px */
+  --shadow-card: 0 4px 20px rgba(10, 31, 62, 0.04);
+  --shadow-card-hover: 0 8px 28px rgba(10, 31, 62, 0.07);
+  --gradient-brand: linear-gradient(135deg, #0baa71 0%, #00beb4 100%);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --canvas: #020617;
-    --surface: #0f172a;
-    --border: #1e293b;
-    --text: #e2e8f0;
-    --text-muted: #94a3b8;
+    --canvas: #071019;
+    --surface: #0d1b28;
+    --border: #1c2e3c;
+    --text: #edf2f5;
+    --text-muted: #93a3b3;
   }
 }
 
@@ -61,9 +73,9 @@ body {
   -webkit-tap-highlight-color: transparent;
 }
 
-/* A soft brand gradient wash for brand panels (login, empty states). */
+/* A soft brand gradient wash for brand panels (login, empty states) — FT-07 §2.1 green-to-teal. */
 .brand-gradient {
-  background-image: linear-gradient(135deg, #0b1f4d 0%, #0b6bff 45%, #14b8a6 80%, #00c49a 100%);
+  background-image: var(--gradient-brand);
 }
 
 /* AI-generated content marker treatment (DESIGN.md §24). */
@@ -98,11 +110,17 @@ body {
 }
 
 .btn-primary {
-  background-color: var(--color-brand);
+  background-image: var(--gradient-brand);
   color: #fff;
+  box-shadow: 0 1px 2px rgba(11, 170, 113, 0.25);
 }
 .btn-primary:not(:disabled):hover {
-  background-color: var(--color-brand-dark);
+  box-shadow: 0 2px 6px rgba(11, 170, 113, 0.32);
+  filter: brightness(0.96);
+}
+.btn-primary:not(:disabled):active {
+  filter: brightness(0.9);
+  box-shadow: none;
 }
 
 .btn-secondary {
@@ -148,23 +166,33 @@ body {
   border-radius: var(--radius-card);
   border: 1px solid var(--border);
   background-color: var(--surface);
+  box-shadow: var(--shadow-card);
+  transition: box-shadow 0.15s, border-color 0.15s;
 }
 
+/* Elevation for clickable cards (metric cards, document rows) — §6/§20. */
+a.card:hover,
+button.card:hover {
+  box-shadow: var(--shadow-card-hover);
+}
+
+/* Page title — FT-07 §2.3: 28–32px / semibold */
 .page-title {
-  font-size: 1.25rem;
-  font-weight: 700;
+  font-size: 1.5rem;
+  font-weight: 600;
   color: var(--text);
   letter-spacing: -0.01em;
 }
 @media (min-width: 640px) {
   .page-title {
-    font-size: 1.5rem;
+    font-size: 1.875rem;
   }
 }
 
+/* Section heading — FT-07 §2.3: 18–20px / semibold */
 .section-title {
-  font-size: 0.875rem;
-  font-weight: 700;
+  font-size: 1.0625rem;
+  font-weight: 600;
   color: var(--text);
 }
 

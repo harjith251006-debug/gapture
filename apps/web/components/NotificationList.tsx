@@ -1,13 +1,18 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { NotificationCard, type NotificationData } from "@/components/NotificationCard";
 
 /**
  * Notification feed with mark-as-read. Clicking a row expands the captured
- * summary and optimistically marks it read.
+ * summary and optimistically marks it read. An optional `?q=` (set by the
+ * header search — FT-07 §3.2) client-filters the already-loaded rows by
+ * title/description; no new backend query.
  */
 export function NotificationList() {
+  const searchParams = useSearchParams();
+  const query = (searchParams.get("q") ?? "").trim().toLowerCase();
   const [items, setItems] = useState<NotificationData[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -86,10 +91,25 @@ export function NotificationList() {
     );
   }
 
+  const filtered = query
+    ? items.filter((n) => `${n.title} ${n.description}`.toLowerCase().includes(query))
+    : items;
+
+  if (filtered.length === 0) {
+    return (
+      <div className="card p-8 text-center">
+        <p className="mt-2 text-sm font-medium text-navy dark:text-slate-200">No matching notifications</p>
+        <p className="mt-1 text-sm text-[var(--text-muted)]">
+          No notification matched &ldquo;{searchParams.get("q")}&rdquo;. Try a different search.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-2">
       <ul className="card divide-y divide-[var(--border)] overflow-hidden">
-        {items.map((n) => (
+        {filtered.map((n) => (
           <NotificationCard
             key={n.id}
             notification={n}

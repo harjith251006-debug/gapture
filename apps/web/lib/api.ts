@@ -21,7 +21,11 @@ export type ApiErrorCode =
   | "unsupported_media_type"
   | "payload_too_large"
   | "internal"
-  | "upstream_error";
+  | "upstream_error"
+  /** The regulatory document exists but hasn't reached a Q&A-ready status yet. */
+  | "regulation_processing"
+  /** The regulatory document's processing pipeline ended in FAILED. */
+  | "regulation_failed";
 
 const STATUS_BY_CODE: Record<ApiErrorCode, number> = {
   unauthorized: 401,
@@ -33,6 +37,8 @@ const STATUS_BY_CODE: Record<ApiErrorCode, number> = {
   payload_too_large: 413,
   internal: 500,
   upstream_error: 502,
+  regulation_processing: 409,
+  regulation_failed: 409,
 };
 
 export function ok<T>(data: T, extra?: Record<string, unknown>, init?: ResponseInit): NextResponse {

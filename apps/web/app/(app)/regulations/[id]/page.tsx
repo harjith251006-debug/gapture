@@ -1,10 +1,9 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { SourceBadge, StatusBadge, statusLabel } from "@/components/StatusBadge";
-import { SummaryView, type AnalysisData } from "@/components/SummaryView";
-import { DetailedBrief } from "@/components/DetailedBrief";
-import { QuestionInterface } from "@/components/QuestionInterface";
+import { SourceBadge } from "@/components/StatusBadge";
+import type { AnalysisData } from "@/components/SummaryView";
+import { RegulationLive } from "@/components/RegulationLive";
 
 export const dynamic = "force-dynamic";
 
@@ -58,6 +57,16 @@ export default async function RegulationDetailPage({ params }: { params: Promise
       }
     : null;
 
+  // Whether this org has ANY fully-processed policy — distinguishes "the
+  // per-org comparison just hasn't run yet" (transient, worth polling for)
+  // from "there is nothing to compare against" (stable — RegulationLive
+  // stops polling and says so rather than implying it'll appear on its own).
+  const { count: completedPolicyCount } = await supabase
+    .from("compliance_policies")
+    .select("id", { count: "exact", head: true })
+    .eq("organization_id", organizationId)
+    .eq("status", "COMPLETED");
+
   return (
     <div className="max-w-3xl space-y-6">
       <div>
@@ -69,7 +78,6 @@ export default async function RegulationDetailPage({ params }: { params: Promise
       <header className="card space-y-2 p-4">
         <div className="flex flex-wrap items-center gap-2">
           <SourceBadge code={row.source_code} />
-          <StatusBadge status={row.status} />
         </div>
         <h1 className="break-words text-lg font-bold leading-snug text-navy dark:text-slate-100 sm:text-xl">
           {row.title}
@@ -79,22 +87,12 @@ export default async function RegulationDetailPage({ params }: { params: Promise
         </p>
       </header>
 
-      {analysis ? (
-        <div className="space-y-4">
-          <SummaryView analysis={analysis} />
-          {analysis.detailed && <DetailedBrief detailed={analysis.detailed} />}
-        </div>
-      ) : (
-        <div className="card bg-canvas p-4 text-sm text-slate-600 dark:text-slate-300">
-          {row.status === "FAILED"
-            ? "Processing this document failed. The team has been notified."
-            : `This document is still being processed (${statusLabel(row.status).toLowerCase()}). The AI analysis against your organization's policies will appear here once it's ready.`}
-        </div>
-      )}
-
-      <hr className="border-[var(--border)]" />
-
-      <QuestionInterface documentId={row.document_id} />
+      <RegulationLive
+        documentId={row.document_id}
+        initialStatus={row.status}
+        initialAnalysis={analysis}
+        initialHasPolicies={(completedPolicyCount ?? 0) > 0}
+      />
     </div>
   );
 }

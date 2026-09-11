@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { VoiceButton } from "@/components/VoiceButton";
 import { AILabel } from "@/components/AILabel";
+import { MarkdownContent } from "@/components/MarkdownContent";
 
 interface QaItem {
   id: string;
@@ -129,7 +130,7 @@ export function QuestionInterface({ documentId }: { documentId: string }) {
           type="text"
           value={question}
           onChange={(e) => setQuestion(e.target.value)}
-          placeholder="e.g. What action does this require, and by when?"
+          placeholder="e.g. What has changed, and what do we need to update in our policies?"
           className="field flex-1"
           aria-label="Your question about this document"
         />
@@ -166,9 +167,9 @@ export function QuestionInterface({ documentId }: { documentId: string }) {
               }`}
             >
               <p className="break-words text-sm font-semibold text-navy dark:text-slate-100">{qa.question}</p>
-              <p className="mt-1 whitespace-pre-wrap break-words text-sm text-slate-700 dark:text-slate-300">
-                {qa.answer}
-              </p>
+              <div className="mt-1">
+                <MarkdownContent className="break-words">{qa.answer}</MarkdownContent>
+              </div>
               {qa.answered === false && (
                 <p className="mt-1.5 text-xs font-semibold text-warning">
                   Not enough context to answer confidently

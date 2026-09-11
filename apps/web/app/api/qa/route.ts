@@ -32,14 +32,33 @@ export const POST = route("api/qa", async (req) => {
   }
   const { documentId, question } = parseJsonBody(bodySchema, rawBody);
 
-  // Regulatory documents are global reference data — existence check only.
+  // Regulatory documents are global reference data — existence + status check.
   const { data: doc, error: docErr } = await session.supabase
     .from("regulatory_documents")
-    .select("id, title")
+    .select("id, title, status")
     .eq("id", documentId)
     .maybeSingle();
   if (docErr) throw new Error(`document lookup failed: ${docErr.message}`);
   if (!doc) throw new ApiError("not_found", "Document not found");
+
+  // Q&A grounds itself directly in this document's own embedded chunks
+  // (Pinecone `regulatory` namespace), which exist once the document has
+  // passed INDEXING — i.e. status ANALYZING or COMPLETED. It does NOT
+  // depend on this organization's nlp_analyses row (that may legitimately
+  // never exist if the org has no policies), so it is gated on the
+  // document's own pipeline status, not on org-specific analysis
+  // completion. Never call the LLM — or even attempt retrieval — for a
+  // document that isn't there yet; that's a real "still processing" state,
+  // not a retrieval or LLM failure, and must be reported as such.
+  if (doc.status === "FAILED") {
+    throw new ApiError("regulation_failed", "Regulatory document processing failed. Contextual Q&A is unavailable for this document.");
+  }
+  if (!["ANALYZING", "COMPLETED"].includes(doc.status)) {
+    throw new ApiError(
+      "regulation_processing",
+      "Analysis is still being prepared. Contextual Q&A will be available once processing is complete.",
+    );
+  }
 
   let result;
   try {

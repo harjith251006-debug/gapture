@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { AILabel } from "@/components/AILabel";
+import { MarkdownContent } from "@/components/MarkdownContent";
 
 /**
  * "Brief of Detailed NLP Data" (PRD FR-20, DESIGN.md §13). Long-form, so it
@@ -25,8 +26,8 @@ export function DetailedBrief({ detailed }: { detailed: string }) {
         <span className="text-[var(--text-muted)]">{open ? "Hide" : "Show"}</span>
       </button>
       {open && (
-        <div className="ai-surface mt-2 whitespace-pre-wrap break-words rounded-r-[var(--radius-card)] bg-ai/[0.04] p-4 pl-5 text-sm leading-relaxed text-slate-700 dark:text-slate-300">
-          {detailed}
+        <div className="ai-surface mt-2 rounded-r-[var(--radius-card)] bg-ai/[0.04] p-4 pl-5">
+          <MarkdownContent className="break-words">{detailed}</MarkdownContent>
         </div>
       )}
     </section>

@@ -41,3 +41,35 @@ export function SourceBadge({ code }: { code: string | null }) {
     </span>
   );
 }
+
+function BankIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className={className}>
+      <path d="M3 10 12 4l9 6M4 10h16v9H4v-9ZM4 19h16M8 13v4M12 13v4M16 13v4" />
+    </svg>
+  );
+}
+function TrendIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className={className}>
+      <path d="M4 20V10M10 20V4M16 20v-7M22 20H2" />
+    </svg>
+  );
+}
+
+/** Source-specific icon treatment (FT-07 §9) — RBI green, SEBI teal — same shared visual system. */
+export function SourceIcon({ code, className = "h-5 w-5" }: { code: string | null; className?: string }) {
+  const isSebi = code === "SEBI";
+  const Icon = isSebi ? TrendIcon : BankIcon;
+  return (
+    <span
+      className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--radius-md)] ${
+        isSebi
+          ? "bg-teal/10 text-teal dark:bg-teal/15"
+          : "bg-[var(--color-green-tint)] text-brand dark:bg-brand/15"
+      }`}
+    >
+      <Icon className={className} />
+    </span>
+  );
+}

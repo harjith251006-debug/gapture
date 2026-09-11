@@ -40,6 +40,16 @@ export const GET = route("api/documents/[id]", async (_req, ctx) => {
   const row = rows[0];
   if (!row) throw new ApiError("not_found", "Document not found");
 
+  // Distinguishes "this org has no policies to compare against yet" (a
+  // stable, non-transient state — nothing will change until one is
+  // uploaded) from "the analysis for this org just hasn't run yet" (a
+  // transient state worth polling for) when no analysis row exists.
+  const { count: completedPolicyCount } = await session.supabase
+    .from("compliance_policies")
+    .select("id", { count: "exact", head: true })
+    .eq("organization_id", organizationId)
+    .eq("status", "COMPLETED");
+
   return ok({
     id: row.document_id,
     title: row.title,
@@ -56,5 +66,6 @@ export const GET = route("api/documents/[id]", async (_req, ctx) => {
           analyzedAt: row.analyzed_at,
         }
       : null,
+    hasPolicies: (completedPolicyCount ?? 0) > 0,
   });
 });

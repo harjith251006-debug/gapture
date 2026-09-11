@@ -1,4 +1,5 @@
 import { AILabel } from "@/components/AILabel";
+import { MarkdownContent } from "@/components/MarkdownContent";
 
 /**
  * The 1-Line + Summary outputs (PRD FR-20, DESIGN.md §13). Visually marked as
@@ -24,15 +25,13 @@ export function SummaryView({ analysis }: { analysis: AnalysisData }) {
       <div className="space-y-4">
         <section>
           <h3 className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">1-Line</h3>
-          <p className="break-words text-sm font-medium leading-snug text-navy dark:text-slate-100">
-            {analysis.oneLine}
-          </p>
+          <div className="break-words text-sm font-medium leading-snug text-navy dark:text-slate-100">
+            <MarkdownContent>{analysis.oneLine}</MarkdownContent>
+          </div>
         </section>
         <section>
           <h3 className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">Summary</h3>
-          <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-slate-700 dark:text-slate-300">
-            {analysis.summary}
-          </p>
+          <MarkdownContent className="break-words">{analysis.summary}</MarkdownContent>
         </section>
         {analysis.analyzedAt && (
           <p className="text-xs text-[var(--text-muted)]">
